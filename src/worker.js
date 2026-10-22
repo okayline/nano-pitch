@@ -18,8 +18,11 @@
 // made on first use and kept in pitch_meta. Every table here is pitch_..., because they share the moba-beat database.
 // Players: a random token in an `np` cookie; only its SHA-256 is stored. Made on your first move (looking never makes one).
 // The account code is copied from moba-beat src/worker.js (itself from dawn-baton).
+// After every seal (a day, a game, a practice game), the ledger's entry count and newest hash go to the shared registry as a
+// checkpoint (REGISTRY), so the registry's Bitcoin stamp covers Pitch's ledger too.
 import { dayEntry, entryInsert, seal, sha256 } from "./ledger.js";
 import { dailySeed, seedHash } from "../engine/daily.js";
+import { verifyTip } from "../public/chain.js";
 import { HUMAN, startGame, actGame, replayGame, viewGame } from "../public/engine/pitch.js";
 
 const GAME = "nano-pitch";
@@ -86,10 +89,14 @@ function crowdStmts(env, history) {
   });
 }
 
-async function today(env) {
+async function today(env, ctx = null) {
   const day = utcDay(), seed = await dailySeed(await secret(env), day), sealed = cached(env).sealed;
   const memory = await memoryFor(env, day);
-  if (!sealed.has(day)) { await dayEntry(env.DB, day, await seedHash(seed), memory.hash, now()); sealed.add(day); }   // seen sealed: skip the read
+  if (!sealed.has(day)) {   // seen sealed: skip the read
+    const d = await dayEntry(env.DB, day, await seedHash(seed), memory.hash, now());
+    sealed.add(day);
+    if (d.sealed) ctx?.waitUntil(checkpoint(env));
+  }
   return { day, seed, memory: memory.value };
 }
 
@@ -154,7 +161,7 @@ async function gameFor(env, me, day, seed, memory) {
 }
 
 async function getToday(ctx) {
-  const { env } = ctx, { day, seed, memory } = await today(env);
+  const { env } = ctx, { day, seed, memory } = await today(env, ctx);
   const { actions, game, reset } = await gameFor(env, await player(ctx), day, seed, memory);
   return { ...(await answer(env, day, actions, game)), ...(reset ? { reset: true } : {}) };
 }
@@ -167,7 +174,7 @@ function cleanAction(a) {
 }
 
 async function postAct(ctx) {
-  const b = await body(ctx.req), { env } = ctx, { day, seed, memory } = await today(env);
+  const b = await body(ctx.req), { env } = ctx, { day, seed, memory } = await today(env, ctx);
   if (b.day !== day) throw new Oops("That day's deal is over. A new one starts at midnight UTC.", 409);
   const action = cleanAction(b.action);
   const me = await player(ctx, true);
@@ -203,6 +210,7 @@ async function postAct(ctx) {
     return { hash, stmts: [save.bind(me.id, day, JSON.stringify(moves), 1, mine, t, t, actions.length), stmt, field, ...crowdStmts(env, next.history)] };
   });
   if (sealed.duplicate) await stale("Today's game is already sealed.");
+  ctx.waitUntil(checkpoint(env));
   return { ...(await answer(env, day, moves, next)), hash: sealed.hash };
 }
 
@@ -229,7 +237,7 @@ async function getPractice(ctx) {
 }
 
 async function newPractice(ctx) {
-  const { env } = ctx, me = await must(ctx), { day } = await today(env);
+  const { env } = ctx, me = await must(ctx), { day } = await today(env, ctx);
   const daily = await handOf(env, me.id, day);
   if (!daily || !daily.done) throw new Oops("Finish today's game first.", 409);
   const open = await practiceOf(env, me.id);
@@ -268,6 +276,7 @@ async function postPractice(ctx) {
     return { hash, stmts: [save.bind(JSON.stringify(moves), 1, t, row.id, actions.length), stmt, ...crowdStmts(env, next.history)] };
   });
   if (sealed.duplicate) stale("That practice game is already sealed.");
+  ctx.waitUntil(checkpoint(env));
   return { ...practiceAnswer(row, moves, next), hash: sealed.hash };
 }
 
@@ -284,6 +293,24 @@ async function ledger(ctx) {
     else entries.push(e);
   }
   return { entries };
+}
+
+// ---------- the registry checkpoint ----------
+
+// The ledger so far goes to the shared registry: its entry count and newest hash, which covers every entry before it. A
+// registry that's away never stops a game: the next checkpoint covers it. It reads only the newest two entries (verifyTip),
+// so it costs the same however long the ledger is. Entries are never deleted, so the newest id is the entry count.
+// (Copied from moba-beat src/worker.js, itself from aura-farm.)
+export async function checkpoint(env) {
+  try {
+    if (!env.REGISTRY) return;
+    const rows = (await env.DB.prepare("SELECT id, record, prev_hash, hash FROM pitch_ledger ORDER BY id DESC LIMIT 2").all()).results.reverse();
+    if (!rows.length) return;
+    const last = rows[rows.length - 1], v = await verifyTip(rows);
+    if (!v.ok) return console.error("The ledger is broken at entry " + v.at + ": no checkpoint sent.");
+    const res = await env.REGISTRY.checkpoint({ game: GAME, entries: last.id, head: last.hash });
+    if (res && res.error) console.error("The registry refused the checkpoint: " + res.error);
+  } catch (e) { console.error(e); }
 }
 
 // ---------- save codes and passkeys (kept by the shared Accounts service in dungeon-items) ----------

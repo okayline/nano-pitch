@@ -60,7 +60,8 @@ function draw() {
 
 function header() {
   const sub = T ? `${stamp(T.day)} · ${T.practice ? "practice game" : "first to " + T.view.target}` : "one game a day";
-  const right = mode === "account" ? `<button class="link" data-k="esc">Back</button>` : `<button class="link" data-k="a">Account</button>`;
+  const right = mode === "account" ? `<button class="link" data-k="esc">Back</button>`
+    : `<span class="row" style="gap:14px"><a class="link" href="ledger.html">Ledger</a><button class="link" data-k="a">Account</button></span>`;
   return `<header><div class="title">DAILY PITCH<small>${esc(sub)}</small></div>${right}</header>`;
 }
 

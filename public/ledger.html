@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daily Pitch ledger</title>
+<meta name="description" content="Every day's deal and every finished game of Daily Pitch, on one hash chain.">
+<meta name="theme-color" content="#0b0a12">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header><div class="title">THE LEDGER<small>Daily Pitch · one hash chain</small></div><a class="link" href="./">Back to the game</a></header>
+  <div class="panel">
+    <p class="small" style="margin:0">Every day's deal and every finished game, on one chain: each entry's hash is SHA-256 of the one before it, a bar, and its record, so changing any entry breaks every hash after it. A day's entry fixes the deal and the table's memory before anyone plays; its seed is shown once the day is over, so anyone can rebuild the deals. Today's games stay hidden until then, because everyone holds the same cards. After every seal, the chain's newest hash goes to the shared 88x31 registry as a checkpoint.</p>
+  </div>
+  <button class="go" id="check" type="button">Check the chain</button>
+  <p class="hint" id="checked" role="status"></p>
+  <ol class="entries" id="entries"></ol>
+  <button class="ghost" id="more" type="button" hidden>Older entries</button>
+  <div class="ver" id="ver"></div>
+</div>
+<script type="module" src="ledger.js"></script>
+</body>
+</html>

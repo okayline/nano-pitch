@@ -9,9 +9,10 @@
     "binding": "ASSETS",
     "run_worker_first": ["/api/*"]
   },
-  // the shared accounts (the dungeon-items Worker): save codes and passkeys
+  // the shared accounts and registry (the dungeon-items Worker): save codes and passkeys, and checkpoints of this ledger
   "services": [
-    { "binding": "ACCOUNTS", "service": "dungeon-items", "entrypoint": "Accounts" }
+    { "binding": "ACCOUNTS", "service": "dungeon-items", "entrypoint": "Accounts" },
+    { "binding": "REGISTRY", "service": "dungeon-items", "entrypoint": "Registry" }
   ],
   // Pitch's tables live in the moba-beat database; every one of them is named pitch_...
   "d1_databases": [

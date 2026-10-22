@@ -49,17 +49,20 @@ function fakeAccounts() {
 
 function setup() {
   const DB = fakeD1();
-  const env = { DB, ACCOUNTS: fakeAccounts() };
+  const checkpoints = [];
+  const env = { DB, ACCOUNTS: fakeAccounts(), REGISTRY: { async checkpoint(c) { checkpoints.push(c); return { ok: true, created: true }; } } };
   const call = async (path, { body, cookie, ip = "1.2.3.4" } = {}) => {
+    const later = [];
     const r = await worker.fetch(new Request("https://pitch.88x31.app" + path, {
       method: body ? "POST" : "GET",
       headers: { "content-type": "application/json", "cf-connecting-ip": ip, ...(cookie ? { cookie } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
-    }), env, { waitUntil() {} });
+    }), env, { waitUntil: (p) => later.push(p) });
+    await Promise.all(later);   // the registry checkpoint runs after the answer
     const set = r.headers.get("set-cookie");
     return { status: r.status, cookie: set ? set.split(";")[0] : null, ...(await r.json()) };
   };
-  return { env, call, raw: DB.raw };
+  return { env, call, raw: DB.raw, checkpoints };
 }
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -225,6 +228,20 @@ test("the table's memory: the day starts from a snapshot the ledger commits to, 
   assert.ok(chosen >= 1);
   assert.equal(raw.prepare("SELECT memory FROM pitch_crowd WHERE day = ?").get(today()).memory, snap);
   assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM pitch_crowd").get().n, 1);
+});
+
+test("every seal sends the registry a checkpoint: the entry count and the newest hash", async () => {
+  const { call, raw, checkpoints } = setup();
+  await call("/api/today");   // seals the day
+  assert.equal(checkpoints.length, 1);
+  const day = raw.prepare("SELECT id, hash FROM pitch_ledger ORDER BY id DESC LIMIT 1").get();
+  assert.deepEqual(checkpoints[0], { game: "nano-pitch", entries: day.id, head: day.hash });
+  await call("/api/today");   // nothing new sealed: no checkpoint
+  assert.equal(checkpoints.length, 1);
+  await playThrough(call);    // seals a game
+  const last = raw.prepare("SELECT id, hash FROM pitch_ledger ORDER BY id DESC LIMIT 1").get();
+  assert.equal(checkpoints.length, 2);
+  assert.deepEqual(checkpoints[1], { game: "nano-pitch", entries: last.id, head: last.hash });
 });
 
 test("a move from a stale tab, an illegal move and another day are refused", async () => {

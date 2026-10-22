@@ -4,6 +4,16 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.6 — "Open Book"
+**Wed Oct 21, 2026**
+
+- A ledger page (Ledger, top of the game): every day's entry and every finished game, newest first. A day shows its seed hash and the table's memory hash, and its seed once the day is over; a game shows the player number, the hands, the totals and the place; today's games show as hidden until the day is over. "Check the chain" fetches every entry and checks every hash in the browser (public/chain.js); today's hidden entries are checked for their link, not rehashed.
+- Hooked up to the shared registry: after every seal (a day, a daily game, a practice game), the ledger's entry count and newest hash go to the registry as a checkpoint, so the registry's Bitcoin stamp covers Pitch's ledger too. A registry that's away never stops a game; the next checkpoint covers it. New REGISTRY binding in wrangler.jsonc (dungeon-items' Registry entrypoint).
+- The page's styles moved from index.html into public/style.css, shared with the ledger page.
+- Removed: the inline `<style>` block in index.html.
+
+---
+
 ## v0.5 — "Neon Table"
 **Wed Oct 21, 2026**
 
