@@ -4,6 +4,15 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.3.1 — "Fresh Start"
+**Wed Oct 21, 2026**
+
+- Fixed: the page showed "Something broke" for a player whose saved moves were made before the bots changed in v0.2 (the old moves no longer line up with the retuned bots, so the game couldn't be rebuilt). An unfinished game whose moves no longer replay now starts over, with a line saying so; the same goes for an unfinished practice game.
+- A sealed game that can't be rebuilt any more says so instead of breaking.
+- Removed: nothing.
+
+---
+
 ## v0.3 — "First to 11"
 **Wed Oct 21, 2026**
 

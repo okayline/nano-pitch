@@ -191,6 +191,23 @@ test("practice games: refused until today's game is sealed, then random deals se
   assert.equal(l.entries.find((e) => e.kind === "practice").record, null);
 });
 
+test("a saved game whose moves no longer replay (the bots changed) starts over instead of breaking", async () => {
+  const { call, raw } = setup();
+  const t = await call("/api/today");
+  const first = t.view.phase === "bid" ? { type: "bid", bid: t.view.bidOptions[0] } : { type: "play", card: t.view.legal[0] };
+  const r = await call("/api/act", { body: { day: t.day, n: 0, action: first } });
+  // moves that can't be legal for this deal, as if saved under other bot rules
+  raw.prepare("UPDATE pitch_hands SET actions = ?").run(JSON.stringify([{ type: "bid", bid: 0 }, { type: "play", card: 0 }, { type: "play", card: 1 }, { type: "play", card: 2 }]));
+  const back = await call("/api/today", { cookie: r.cookie });
+  assert.equal(back.status, 200);
+  assert.equal(back.reset, true);
+  assert.equal(back.n, 0);
+  assert.equal(raw.prepare("SELECT actions FROM pitch_hands").get().actions, "[]");
+  assert.equal((await call("/api/today", { cookie: r.cookie })).reset, undefined);   // only said once
+  const again = await call("/api/act", { body: { day: t.day, n: 0, action: first }, cookie: r.cookie });
+  assert.equal(again.status, 200);
+});
+
 test("a move from a stale tab, an illegal move and another day are refused", async () => {
   const { call } = setup();
   const t = await call("/api/today");

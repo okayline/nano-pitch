@@ -107,11 +107,24 @@ async function answer(env, day, actions, game) {
   return { day, n: actions.length, view: viewGame(game), field: game.over ? await fieldOf(env, day) : null };
 }
 
+// The player's game for the day, rebuilt from the seed and their saved moves. If those moves no longer replay (the bots or rules
+// changed since they were made), an unfinished game starts over; a sealed one can't be shown again.
+async function gameFor(env, me, day, seed) {
+  const row = me ? await handOf(env, me.id, day) : null;
+  if (!row) return { row: null, actions: [], game: startGame(seed), reset: false };
+  const actions = JSON.parse(row.actions);
+  try { return { row, actions, game: replayGame(seed, actions), reset: false }; }
+  catch {
+    if (row.done) throw new Oops("Today's game was sealed before the bots changed, so it can't be shown again.", 409);
+    await env.DB.prepare("UPDATE pitch_hands SET actions = '[]', updated_at = ? WHERE player_id = ? AND day = ? AND done = 0").bind(now(), me.id, day).run();
+    return { row: { ...row, actions: "[]" }, actions: [], game: startGame(seed), reset: true };
+  }
+}
+
 async function getToday(ctx) {
   const { env } = ctx, { day, seed } = await today(env);
-  const me = await player(ctx), row = me ? await handOf(env, me.id, day) : null;
-  const actions = row ? JSON.parse(row.actions) : [];
-  return answer(env, day, actions, row ? replayGame(seed, actions) : startGame(seed));
+  const { actions, game, reset } = await gameFor(env, await player(ctx), day, seed);
+  return { ...(await answer(env, day, actions, game)), ...(reset ? { reset: true } : {}) };
 }
 
 // Only the fields a move needs, so nothing else can ride along into the ledger.
@@ -126,8 +139,7 @@ async function postAct(ctx) {
   if (b.day !== day) throw new Oops("That day's deal is over. A new one starts at midnight UTC.", 409);
   const action = cleanAction(b.action);
   const me = await player(ctx, true);
-  const row = await handOf(env, me.id, day);
-  const actions = row ? JSON.parse(row.actions) : [];
+  const { row, actions } = await gameFor(env, me, day, seed);
   const stale = async (msg) => { throw new Oops(msg, 409, await answer(env, day, actions, replayGame(seed, actions))); };
   if (row && row.done) await stale("Today's game is already sealed.");
   if (b.n !== actions.length) await stale("This game moved on in another tab.");
@@ -166,13 +178,21 @@ async function postAct(ctx) {
 
 const practiceOf = (env, playerId) =>
   env.DB.prepare("SELECT id, seed, actions FROM pitch_practice WHERE player_id = ? AND done = 0 ORDER BY id DESC LIMIT 1").bind(playerId).first();
+// A practice game whose saved moves no longer replay starts over.
+async function practiceGame(env, row) {
+  try { return { actions: JSON.parse(row.actions), game: replayGame(row.seed, JSON.parse(row.actions)) }; }
+  catch {
+    await env.DB.prepare("UPDATE pitch_practice SET actions = '[]', updated_at = ? WHERE id = ? AND done = 0").bind(now(), row.id).run();
+    return { actions: [], game: startGame(row.seed) };
+  }
+}
 const practiceAnswer = (row, actions, game) => ({ practice: row.id, n: actions.length, view: viewGame(game), field: null });
 
 async function getPractice(ctx) {
   const me = await player(ctx), row = me ? await practiceOf(ctx.env, me.id) : null;
   if (!row) return { practice: null };
-  const actions = JSON.parse(row.actions);
-  return practiceAnswer(row, actions, replayGame(row.seed, actions));
+  const { actions, game } = await practiceGame(ctx.env, row);
+  return practiceAnswer(row, actions, game);
 }
 
 async function newPractice(ctx) {
@@ -180,7 +200,7 @@ async function newPractice(ctx) {
   const daily = await handOf(env, me.id, day);
   if (!daily || !daily.done) throw new Oops("Finish today's game first.", 409);
   const open = await practiceOf(env, me.id);
-  if (open) return practiceAnswer(open, JSON.parse(open.actions), replayGame(open.seed, JSON.parse(open.actions)));
+  if (open) { const { actions, game } = await practiceGame(env, open); return practiceAnswer(open, actions, game); }
   if (!(await rateLimit(env, ctx.req, "practice", 30, 3600))) throw new Oops("Too many practice games from here. Try again later.", 429);
   const seed = await sha256(`${await secret(env)}|practice|${newToken()}`);   // a deal nobody can predict; shown in the ledger once sealed
   const t = now();
@@ -193,7 +213,7 @@ async function postPractice(ctx) {
   const b = await body(ctx.req), { env } = ctx, me = await must(ctx), action = cleanAction(b.action);
   const row = await env.DB.prepare("SELECT id, seed, actions, done, day FROM pitch_practice WHERE id = ? AND player_id = ?").bind(Number(b.id), me.id).first();
   if (!row) throw new Oops("No such practice game.", 404);
-  const actions = JSON.parse(row.actions);
+  const { actions } = row.done ? { actions: JSON.parse(row.actions) } : await practiceGame(env, row);
   const stale = (msg) => { throw new Oops(msg, 409, row.done ? { practice: null } : practiceAnswer(row, actions, replayGame(row.seed, actions))); };
   if (row.done) stale("That practice game is already sealed.");
   if (b.n !== actions.length) stale("This game moved on in another tab.");

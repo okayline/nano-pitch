@@ -279,7 +279,7 @@ async function practice() {
 async function load() {
   const r = await api("today");
   if (r.error) { msg = r.error; mode = "loading"; return draw(); }
-  T = { ...r, practice: null }; msg = ""; mode = "game"; seen = T.view.history.length; draw();   // a game reloaded in progress doesn't replay old results
+  T = { ...r, practice: null }; msg = r.reset ? "The bots changed since your last move, so today's game started over." : ""; mode = "game"; seen = T.view.history.length; draw();   // a game reloaded in progress doesn't replay old results
 }
 
 async function send(action) {
