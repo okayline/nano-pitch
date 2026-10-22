@@ -123,14 +123,12 @@ test("best suit: most points, then most cards, then the lowest suit", () => {
   assert.equal(bestSuit(C("2C 3C 4C 5D 6D 7S")), 0); // clubs: three cards
 });
 
-test("bot bids: by estimate plus the seat's offset, only if it beats the bid", () => {
+test("bot bids: its estimate, only if it beats the bid and is at least 2", () => {
   const two = C("AH JH 9H 2D 3C 4C"); // estimate 2
-  assert.equal(botBid(two, 2, 0), 2); // offset 0
-  assert.equal(botBid(two, 2, 2), 0); // can't beat 2 with 2
-  assert.equal(botBid(two, 1, 0), 0); // cautious seat: 1
-  assert.equal(botBid(two, 3, 0), 3); // bold seat: 3
-  assert.equal(botBid(C("JH 5D 6D 7C 8C 9S"), 3, 0), 0); // 0 + 1 is under 2
-  assert.equal(botBid(C("AH 2H JH TD TC KS"), 3, 0), 4); // 4 + 1 is capped at 4
+  assert.equal(botBid(two, 0), 2);
+  assert.equal(botBid(two, 2), 0); // can't beat 2 with 2
+  assert.equal(botBid(C("JH 5D 6D 7C 8C 9S"), 0), 0); // under 2: pass
+  assert.equal(botBid(C("AH 2H JH TD TC KS"), 0), 4); // ace, low, jack and game
 });
 
 test("bot plays: lead, follow cheaply for a point card, dump the lowest otherwise", () => {
