@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily Pitch</title>
+<meta name="description" content="One hand of Pitch a day. Everyone gets the same six cards.">
+<style>
+  /* VT323, self-hosted (fonts/OFL.txt has its license). The look follows scoundrel.exe and Daily Digital Demon Dungeon. */
+  @font-face { font-family: "VT323"; src: url("fonts/VT323-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+  :root { --bg: #07090a; --fg: #e4e4df; --dim: #4f5d52; --trail: #8f8f8a; --bright: #ffffff; --red: #e0564a; --blue: #9fc4ff; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body {
+    -webkit-user-select: none; user-select: none;
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 16px; box-sizing: border-box;
+    font-family: "VT323", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-variant-ligatures: none;
+  }
+  .frame { max-width: 100%; overflow-x: auto; }
+  pre { margin: 0; font-family: inherit; line-height: 1.05; font-size: clamp(6px, calc((100vw - 32px) / 49), 22px); white-space: pre; }
+  @media (max-width: 700px) { body { padding: 16px 4px; } pre { font-size: calc((100vw - 8px) / 32.5); } }
+  /* suit symbols: always exactly one column, whatever font draws them */
+  .g { display: inline-block; width: 1ch; text-align: center; overflow: visible; line-height: 0;
+       font-family: "VT323", "DejaVu Sans Mono", Menlo, Consolas, "Segoe UI Symbol", monospace; }
+  .fr, .dim { color: var(--trail); }
+  .faint { color: var(--dim); }
+  .you { color: var(--bright); }
+  .red { color: var(--red); }
+  .blue { color: var(--blue); }
+  .btn { cursor: pointer; color: var(--bright); }
+  .btn:hover { background: var(--fg); color: var(--bg); }
+  .btn.off, .btn.off:hover { color: var(--dim); background: none; cursor: default; }
+  .codein { background: var(--bg); color: var(--fg); border: none; outline: 1px solid var(--trail); font: inherit; padding: 0; margin: 0;
+            box-sizing: border-box; text-transform: uppercase; vertical-align: top; height: 1.05em; user-select: text; }
+  .ver { align-self: flex-end; font-size: 12px; color: var(--trail); padding: 2px 1ch 0 0; letter-spacing: 0.05em; }
+  .wrap { display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="frame"><pre id="screen" aria-live="polite">LOADING...</pre></div>
+    <div id="ver" class="ver"></div>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
