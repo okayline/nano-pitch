@@ -4,6 +4,16 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.5 — "Neon Table"
+**Wed Oct 21, 2026**
+
+- A new look, after aura-farm: near-black with purple glow, rounded panels, real card faces (red and black, big rank and suit) and one bright gradient button, laid out for a phone first. Taps and the old keys both work (1-6 for cards; P, 2, 3, 4 to bid; Enter for the next hand; P for a practice game).
+- You play against the table: one robot 🤖 that plays the other three hands, lagspike (left, violet), mogger99 (top, pink) and tiltproof (right, cyan), gamer tags from TILT.EXE's name list, each with its own profile pic (🐌 lagspike, 🗿 mogger99, 🧊 tiltproof; you're 😎). A scoreboard shows your total and each of the table's hands, with a bar for how close the leader is to 11.
+- A hand's result uses 👑 High, 🪶 Low, 🃏 Jack, 🎯 Game and 🔥 Bid; the end screen says YOU BEAT THE TABLE or THE TABLE WINS.
+- Removed: the 80-column text screen and its VT323 font (public/fonts), and the seat names West, North and East.
+
+---
+
 ## v0.4 — "The Table Remembers"
 **Wed Oct 21, 2026**
 
