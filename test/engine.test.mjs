@@ -5,7 +5,7 @@ import { createHash, createHmac } from "node:crypto";
 import {
   HUMAN, cardCode, cardFromCode, gamePoints, deal, shuffledDeck, bidOptions, isForced, legalPlays, trickWinner,
   gameWinnerOf, scoreHand, estimate, bestSuit, botBid, botPlay, start, act, advance, view, suitOf,
-  TARGET, leader, startGame, actGame, replayGame, viewGame,
+  TARGET, CROWD_MIN, crowdKey, leader, startGame, actGame, replayGame, viewGame,
 } from "../public/engine/pitch.js";
 import { dailySeed, seedHash } from "../engine/daily.js";
 
@@ -130,6 +130,49 @@ test("bot bids: its estimate, only if it beats the bid and is at least 2", () =>
   assert.equal(botBid(two, 2), 0); // can't beat 2 with 2
   assert.equal(botBid(C("JH 5D 6D 7C 8C 9S"), 0), 0); // under 2: pass
   assert.equal(botBid(C("AH 2H JH TD TC KS"), 0), 4); // ace, low, jack and game
+});
+
+test("the table's memory: bots follow the crowd once enough players held that type of hand", () => {
+  const two = C("AH JH 9H 2D 3C 4C"); // estimate 2 in hearts, three hearts
+  const key = crowdKey(two, 0);
+  assert.equal(key, "2-3-0");
+  assert.equal(crowdKey(two, 3), "2-3-3");   // the bid faced is part of the type
+  const mem = (counts) => ({ [key]: counts });
+  assert.equal(botBid(two, 0, null), 2);
+  assert.equal(botBid(two, 0, mem({ 0: 4 })), 2);                // 4 players is under CROWD_MIN: the bot's own count
+  assert.equal(CROWD_MIN, 5);
+  assert.equal(botBid(two, 0, mem({ 0: 5 })), 0);                // five passed: it passes
+  assert.equal(botBid(two, 0, mem({ 0: 2, 2: 3, 3: 4 })), 3);    // the most common bid
+  assert.equal(botBid(two, 0, mem({ 2: 3, 3: 3 })), 2);          // a tie goes to the lower bid
+  assert.equal(botBid(two, 0, mem({ 0: 3, 2: 3 })), 0);          // ...which is a pass against a bid
+  assert.equal(botBid(two, 3, mem({ 3: 9 })), 0);                // that memory is for bid 0; against a 3 it's another type, and 2 can't beat 3
+  const other = { [crowdKey(two, 2)]: { 2: 9 } };
+  assert.equal(botBid(two, 2, other), 0);                         // a crowd bid that can't beat the bid faced is a pass
+});
+
+test("a game with a memory replays the same, and each hand notes the human's bid for the memory", () => {
+  const mem = {};
+  for (let i = 0; i < 20; i++) { // a memory that makes every bot hand of type "2-3-0" bid 3, so it changes play
+    const g = startGame("m-" + i);
+    mem[crowdKey(g.hand.dealt[1], 0)] = { 3: 9 };
+  }
+  for (let i = 0; i < 10; i++) {
+    const seed = "m-" + i;
+    const { g, actions } = (() => {
+      let g = startGame(seed, mem); const actions = [];
+      while (!g.over) { const v = viewGame(g); const a = v.phase === "bid" ? { type: "bid", bid: v.bidOptions[0] } : { type: "play", card: v.legal[0] }; actions.push(a); g = actGame(g, a); }
+      return { g, actions };
+    })();
+    assert.deepEqual(replayGame(seed, actions, mem), g);
+    for (const h of g.history) {
+      if (h.crowd === null) assert.equal(h.bid >= 2, true);      // forced as dealer
+      else assert.match(h.crowd.key, /^\d-\d-\d$/);
+    }
+  }
+  // the human's note matches what they bid and what they faced
+  const { g } = (() => { let g = startGame("seed-5"); while (!g.over) { const v = viewGame(g); g = actGame(g, v.phase === "bid" ? { type: "bid", bid: v.bidOptions[0] } : { type: "play", card: v.legal[0] }); } return { g }; })();
+  assert.ok(g.history.some((h) => h.crowd));
+  for (const h of g.history) if (h.crowd) assert.ok([0, 2, 3, 4].includes(h.crowd.bid));
 });
 
 test("bot plays: lead, follow cheaply for a point card, dump the lowest otherwise", () => {

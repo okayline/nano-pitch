@@ -4,6 +4,17 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.4 — "The Table Remembers"
+**Wed Oct 21, 2026**
+
+- The bots now learn from the players. Every bid a player makes is filed under the type of hand it was made with (the points it expects in its best suit, how many cards that suit has, and the bid it faced). Once at least 5 players have held a type of hand, a bot holding that type bids what most of them bid (a tie goes to the lower bid); otherwise it bids by its own count, as before. Card play is unchanged.
+- The learning shows up the next day: the table's memory is copied once when a day begins, and that copy is what the bots follow all day, so everyone faces the same bots and a saved game always replays the same way. The day's ledger entry commits to the copy's hash (`memory_hash`).
+- Both daily and practice games add to the memory when they are sealed (a forced 2 as dealer doesn't count, since it wasn't a choice).
+- Database (migrations/004_crowd.sql): `pitch_crowd_counts` (the running counts) and `pitch_crowd` (one snapshot per day).
+- Removed: nothing.
+
+---
+
 ## v0.3.1 — "Fresh Start"
 **Wed Oct 21, 2026**
 

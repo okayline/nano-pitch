@@ -4,8 +4,10 @@
 //   hash = SHA-256( prev_hash + "|" + record )
 //
 // Two kinds of entry:
-//   day   { day, seed_hash }: SHA-256 of the day's secret seed. It proves the deal was fixed before anyone played; the seed
-//         itself is shown once the day is over, so anyone can rebuild the deal and check every hand.
+//   day   { day, seed_hash, memory_hash }: seed_hash is SHA-256 of the day's secret seed. It proves the deal was fixed before
+//         anyone played; the seed itself is shown once the day is over, so anyone can rebuild the deal and check every hand.
+//         memory_hash is SHA-256 of the table's memory of bids as it stood when the day began (pitch_crowd), which the bots
+//         follow all day. (Entries from before v0.4 have no memory_hash.)
 //   game  { day, player, actions, hands, totals, place }: a player's finished game: every bid and card they played, in order,
 //         and the totals and place the server worked out by replaying them. Players are ids, never names. Hidden until the
 //         day is over, because everyone holds the same cards. (Older entries of kind 'hand' are single hands.)
@@ -53,10 +55,10 @@ export async function entryInsert(db, prev, { kind, day, playerId = null, record
 
 // The day's entry, sealing it first if it isn't on the chain yet: { hash, sealed }.
 const dayRow = (db, day) => db.prepare("SELECT hash FROM pitch_ledger WHERE kind = 'day' AND day = ?").bind(day).first();
-export async function dayEntry(db, day, seedHash, t) {
+export async function dayEntry(db, day, seedHash, memoryHash, t) {
   const got = await dayRow(db, day);
   if (got) return { hash: got.hash, sealed: false };
-  const record = JSON.stringify({ day, seed_hash: seedHash });
+  const record = JSON.stringify({ day, seed_hash: seedHash, memory_hash: memoryHash });
   const r = await seal(db, async (prev) => {
     const { hash, stmt } = await entryInsert(db, prev, { kind: "day", day, record, t });
     return { hash, stmts: [stmt] };

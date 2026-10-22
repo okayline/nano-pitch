@@ -88,7 +88,7 @@ test("looking at today seals the day's entry with the seed's hash and makes no p
   const secret = raw.prepare("SELECT value FROM pitch_meta WHERE key = 'secret'").get().value;
   assert.match(secret, /^[0-9a-f]{64}$/);
   const seed = createHmac("sha256", secret).update("daily:" + today()).digest("hex");
-  const rec = JSON.stringify({ day: today(), seed_hash: sha(seed) });
+  const rec = JSON.stringify({ day: today(), seed_hash: sha(seed), memory_hash: sha("{}") });   // no counts yet: an empty memory
   const e = raw.prepare("SELECT * FROM pitch_ledger").all();
   assert.equal(e.length, 1);
   assert.equal(e[0].record, rec);
@@ -206,6 +206,25 @@ test("a saved game whose moves no longer replay (the bots changed) starts over i
   assert.equal((await call("/api/today", { cookie: r.cookie })).reset, undefined);   // only said once
   const again = await call("/api/act", { body: { day: t.day, n: 0, action: first }, cookie: r.cookie });
   assert.equal(again.status, 200);
+});
+
+test("the table's memory: the day starts from a snapshot the ledger commits to, and sealed games add to the counts", async () => {
+  const { call, raw } = setup();
+  raw.prepare("INSERT INTO pitch_crowd_counts (k, bid, n) VALUES ('2-3-0', 2, 9), ('2-3-0', 0, 1)").run();   // earlier players
+  await call("/api/today");
+  const snap = raw.prepare("SELECT memory FROM pitch_crowd WHERE day = ?").get(today()).memory;
+  assert.deepEqual(JSON.parse(snap), { "2-3-0": { 0: 1, 2: 9 } });
+  const rec = JSON.parse(raw.prepare("SELECT record FROM pitch_ledger WHERE kind = 'day'").get().record);
+  assert.equal(rec.memory_hash, sha(snap));
+  // a whole game adds its bids to the counts, but today's snapshot (and so the bots and the commitment) stays as it was
+  const before = raw.prepare("SELECT COALESCE(SUM(n), 0) AS n FROM pitch_crowd_counts").get().n;
+  const { t } = await playThrough(call);
+  const after = raw.prepare("SELECT COALESCE(SUM(n), 0) AS n FROM pitch_crowd_counts").get().n;
+  const chosen = t.view.history.filter((h) => h.crowd).length;   // a forced 2 as dealer isn't a choice
+  assert.equal(after - before, chosen);
+  assert.ok(chosen >= 1);
+  assert.equal(raw.prepare("SELECT memory FROM pitch_crowd WHERE day = ?").get(today()).memory, snap);
+  assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM pitch_crowd").get().n, 1);
 });
 
 test("a move from a stale tab, an illegal move and another day are refused", async () => {

@@ -176,8 +176,24 @@ export function bestSuit(hand) {
   return best.suit;
 }
 
-// 0 to pass, or a bid that beats `high`.
-export function botBid(hand, high) {
+// The table's memory of bids. A hand is filed by its type: the points it expects in its best suit, how many cards that suit
+// has, and the bid it faced (the highest so far). memory = { "2-3-0": { 0: n, 2: n, 3: n, 4: n }, ... }: how many players made
+// each bid holding that type. A bot follows the crowd once CROWD_MIN players have held its type.
+export const CROWD_MIN = 5;
+export function crowdKey(hand, high) {
+  const suit = bestSuit(hand);
+  return `${estimate(hand, suit)}-${hand.filter((c) => suitOf(c) === suit).length}-${high}`;
+}
+
+// 0 to pass, or a bid that beats `high`: the crowd's most common bid for this type of hand if it has enough players
+// (a tie goes to the lower bid), else the bot's own count.
+export function botBid(hand, high, memory = null) {
+  const seen = memory && memory[crowdKey(hand, high)];
+  if (seen && [0, 2, 3, 4].reduce((n, b) => n + (seen[b] || 0), 0) >= CROWD_MIN) {
+    let best = 0;
+    for (const b of [2, 3, 4]) if ((seen[b] || 0) > (seen[best] || 0)) best = b;
+    return best === 0 || best > high ? best : 0;
+  }
   const want = estimate(hand, bestSuit(hand));
   return want >= 2 && want > high ? want : 0;
 }
@@ -222,10 +238,10 @@ export function botPlay(v) {
 // state = { seed, dealer, dealt, hands, bids, phase: "bid" | "play" | "done", turn, pitcher, bid, trump, trick, tricks, result }
 // Plain JSON, so the Worker can keep it. `start` and `act` hand back a state waiting on the human (or finished).
 
-export function start(seed, dealerSeat) {
+export function start(seed, dealerSeat, memory = null) {
   const dealt = deal(seed), hands = dealt.hands, dealer = dealerSeat ?? dealt.dealer;
   return advance({
-    seed, dealer, dealt: hands.map((h) => h.slice()), hands,
+    seed, dealer, memory, dealt: hands.map((h) => h.slice()), hands,
     bids: [], phase: "bid", turn: (dealer + 1) % 4,
     pitcher: null, bid: 0, trump: null, trick: [], tricks: [], result: null,
   });
@@ -271,7 +287,7 @@ export function advance(s) {
       if (isForced(s.bids, s.dealer, s.turn)) { pushBid(s, s.turn, 2, true); continue; }
       if (s.turn === HUMAN) return s;
       const high = Math.max(0, ...s.bids.map((b) => b.bid));
-      pushBid(s, s.turn, botBid(s.hands[s.turn], high));
+      pushBid(s, s.turn, botBid(s.hands[s.turn], high, s.memory));
       continue;
     }
     if (s.turn === HUMAN) return s;
@@ -334,15 +350,19 @@ function summary(s, no) {
   const hi = plays.reduce((a, p) => (rankOf(p.card) > rankOf(a.card) ? p : a));
   const lo = plays.reduce((a, p) => (rankOf(p.card) < rankOf(a.card) ? p : a));
   const jack = plays.find((p) => rankOf(p.card) === 11);
+  // What the human did at the bidding, for the table's memory (not their forced 2 as dealer, which wasn't a choice).
+  const at = s.bids.findIndex((b) => b.seat === HUMAN), mine = s.bids[at];
+  const crowd = mine.forced ? null : { key: crowdKey(s.dealt[HUMAN], Math.max(0, ...s.bids.slice(0, at).map((b) => b.bid))), bid: mine.bid };
   return {
-    no, dealer: s.dealer, trump: s.trump, pitcher: s.pitcher, bid: s.bid, made: r.made, points: r.points, final: r.final,
+    no, crowd, dealer: s.dealer, trump: s.trump, pitcher: s.pitcher, bid: s.bid, made: r.made, points: r.points, final: r.final,
     high: card(r.high, hi.card), low: card(r.low, lo.card), jack: jack ? card(r.jack, jack.card) : null,
     gameWinner: r.gameWinner, gameTotals: r.gameTotals,
   };
 }
 
-export function startGame(seed) {
-  return { seed, no: 0, totals: [0, 0, 0, 0], history: [], hand: start(seed, dealerOf(seed, 0)), over: false };
+// `memory` is the table's memory of bids as it stood when the day began; the bots in every hand of the game use it.
+export function startGame(seed, memory = null) {
+  return { seed, no: 0, totals: [0, 0, 0, 0], history: [], memory, hand: start(seed, dealerOf(seed, 0), memory), over: false };
 }
 
 // The human's move in the game. Returns a new game; throws if illegal or the game is over.
@@ -355,13 +375,13 @@ export function actGame(game, action) {
   g.totals = g.totals.map((t, seat) => t + g.hand.result.final[seat]);
   if (leader(g.totals) !== null) { g.over = true; return g; }
   g.no++;
-  g.hand = start(handSeed(g.seed, g.no), dealerOf(g.seed, g.no));
+  g.hand = start(handSeed(g.seed, g.no), dealerOf(g.seed, g.no), g.memory);
   return g;
 }
 
 // Rebuild a game from the seed and the human's actions, in order, across all its hands.
-export function replayGame(seed, actions) {
-  let g = startGame(seed);
+export function replayGame(seed, actions, memory = null) {
+  let g = startGame(seed, memory);
   for (const a of actions) g = actGame(g, a);
   return g;
 }
