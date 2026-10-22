@@ -2,19 +2,20 @@
 -- and trigger name starts with pitch_ (a test fails on any other name). Migrations in migrations/ build the same tables.
 
 -- One SHA-256 hash chain (src/ledger.js): a 'day' entry per UTC day (its seed_hash commits to the day's deal) and a
--- 'hand' entry per player per day, their finished hand.
+-- 'game' entry per player per day, their finished daily game, and a 'practice' entry for each finished practice game.
+-- (Entries of kind 'hand', from before games, stay on the chain.)
 CREATE TABLE IF NOT EXISTS pitch_ledger (
   id          INTEGER PRIMARY KEY,
-  kind        TEXT NOT NULL,          -- day | hand
+  kind        TEXT NOT NULL,          -- day | game | practice (older: hand)
   day         TEXT NOT NULL,
-  player_id   INTEGER,                -- hand entries only; never published as a name
+  player_id   INTEGER,                -- game entries only; never published as a name
   record      TEXT NOT NULL,          -- the sealed JSON record
   prev_hash   TEXT NOT NULL UNIQUE,   -- one entry per chain head: the chain can't fork
   hash        TEXT NOT NULL UNIQUE,   -- SHA-256(prev_hash + "|" + record)
   created_at  INTEGER NOT NULL        -- unix seconds
 );
 CREATE UNIQUE INDEX IF NOT EXISTS pitch_ledger_one_day ON pitch_ledger (day) WHERE kind = 'day';
-CREATE UNIQUE INDEX IF NOT EXISTS pitch_ledger_one_hand ON pitch_ledger (day, player_id) WHERE kind = 'hand';
+CREATE UNIQUE INDEX IF NOT EXISTS pitch_ledger_one_game ON pitch_ledger (day, player_id) WHERE kind = 'game';
 
 -- The server's own settings. key 'secret': the random secret the daily seed is made from (made on first use).
 CREATE TABLE IF NOT EXISTS pitch_meta (
@@ -42,29 +43,38 @@ CREATE TABLE IF NOT EXISTS pitch_rate_limits (
   PRIMARY KEY (key, window_start)
 );
 
--- A player's hand for a day: the actions so far (rebuilt from the day's seed with replay), and once it's done, the score.
+-- A player's game for a day: every action so far across all its hands (rebuilt from the day's seed with replayGame), and
+-- once the game is over, the human's final total.
 CREATE TABLE IF NOT EXISTS pitch_hands (
   player_id   INTEGER NOT NULL REFERENCES pitch_players(id),
   day         TEXT NOT NULL,
   actions     TEXT NOT NULL,          -- JSON list of the human's actions
   done        INTEGER NOT NULL DEFAULT 0,
-  final       INTEGER,                -- your score for the day, -4 to +4, once done
+  final       INTEGER,                -- your total points when the game ended, once done
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
   PRIMARY KEY (player_id, day)
 );
 
--- The field: one summary row per day, added to in the same batch as each sealed hand. Never counted from the hands.
+-- The field: one summary row per day, added to in the same batch as each sealed game. Never counted from the games.
 CREATE TABLE IF NOT EXISTS pitch_days (
-  day     TEXT PRIMARY KEY,
-  hands   INTEGER NOT NULL DEFAULT 0,
-  -- how many finished with each score, -4 to +4
-  s_m4 INTEGER NOT NULL DEFAULT 0, s_m3 INTEGER NOT NULL DEFAULT 0, s_m2 INTEGER NOT NULL DEFAULT 0, s_m1 INTEGER NOT NULL DEFAULT 0,
-  s_0  INTEGER NOT NULL DEFAULT 0,
-  s_p1 INTEGER NOT NULL DEFAULT 0, s_p2 INTEGER NOT NULL DEFAULT 0, s_p3 INTEGER NOT NULL DEFAULT 0, s_p4 INTEGER NOT NULL DEFAULT 0,
-  -- how many bid each (pass, 2, 3, 4; the dealer's forced 2 counts as 2)
-  b_0 INTEGER NOT NULL DEFAULT 0, b_2 INTEGER NOT NULL DEFAULT 0, b_3 INTEGER NOT NULL DEFAULT 0, b_4 INTEGER NOT NULL DEFAULT 0,
-  -- how many took each point, and how many pitched and made their bid
-  p_high INTEGER NOT NULL DEFAULT 0, p_low INTEGER NOT NULL DEFAULT 0, p_jack INTEGER NOT NULL DEFAULT 0, p_game INTEGER NOT NULL DEFAULT 0,
-  pitched INTEGER NOT NULL DEFAULT 0, made INTEGER NOT NULL DEFAULT 0
+  day      TEXT PRIMARY KEY,
+  games    INTEGER NOT NULL DEFAULT 0,
+  hands    INTEGER NOT NULL DEFAULT 0,   -- hands played across all those games
+  -- how many finished in each place (1 = the human won; a tie shares the better place)
+  place_1  INTEGER NOT NULL DEFAULT 0, place_2 INTEGER NOT NULL DEFAULT 0, place_3 INTEGER NOT NULL DEFAULT 0, place_4 INTEGER NOT NULL DEFAULT 0
 );
+
+-- Practice games: after today's sealed game a player can start extra ones on random deals. One in progress at a time.
+-- The seed is made when the game starts (not the day's seed); the finished game is sealed on the ledger with its seed.
+CREATE TABLE IF NOT EXISTS pitch_practice (
+  id          INTEGER PRIMARY KEY,
+  player_id   INTEGER NOT NULL REFERENCES pitch_players(id),
+  day         TEXT NOT NULL,
+  seed        TEXT NOT NULL,
+  actions     TEXT NOT NULL,          -- JSON list of the human's actions across all its hands
+  done        INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS pitch_practice_player ON pitch_practice (player_id, done);

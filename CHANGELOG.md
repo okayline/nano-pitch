@@ -4,6 +4,20 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.3 — "First to 11"
+**Wed Oct 21, 2026**
+
+- A day is now one game to 11 points, not one hand. Hands are dealt one after another (everyone gets the same deals), the dealer moves one seat clockwise each hand, and the game ends when a seat has 11 or more and nobody else has as many; a tie at the top deals another hand. In 2000 bot-only games a game took 10 hands (median; most 6 to 13).
+- After each hand, its result (HIGH, LOW, JACK, GAME, the bid, the hand's scores and the running totals) waits for ENTER. The table shows the hand number and everyone's totals.
+- The end screen shows the final totals, your place, your score in each hand, and the field: how many finished on these deals, what share won, and how many hands a game took.
+- Practice games: once today's game is sealed, P starts a game on random deals, as many as you like (30 an hour per address). Each finished one is sealed on the ledger as kind "practice" with its seed, so the table remembers it; practice games stay out of the field.
+- The table's status line says BIDDER where it said PITCHER (the seat that won the bidding).
+- Ledger: a finished daily game is sealed as kind "game" (actions, hands, totals, place). Old "hand" entries stay on the chain.
+- Database (migrations/002_game.sql, 003_practice.sql): new pitch_practice table; pitch_days rebuilt to count games, hands and places; a hand already finished today carries on as hand 1 of that player's game.
+- Removed: one hand a day and its score of -4 to +4; the field's score, bid and points-taken counts (pitch_days dropped and rebuilt); the ledger's one-hand-per-day index; the engine's single-hand `replay` (replaced by `replayGame`); the PITCHER label.
+
+---
+
 ## v0.2 — "Even Table"
 **Wed Oct 21, 2026**
 

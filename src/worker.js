@@ -1,11 +1,16 @@
 // Daily Pitch Worker (nano-pitch).
-//   GET  /api/today                    the UTC day and your hand: started (or carried on) from the day's deal, as far as
-//                                      the bots have played; once it's done, the field (how everyone did on the same deal)
+//   GET  /api/today                    the UTC day and your game (first to 11 points over as many hands as it takes): started
+//                                      (or carried on) from the day's deal, as far as the bots have played; once it's over,
+//                                      the field (how everyone placed on the same deals)
 //   POST /api/act {day, n, action}     your next move: { type: "bid", bid: 0 | 2 | 3 | 4 } or { type: "play", card }.
 //                                      n is how many moves the page has seen (a move from a stale tab is refused). The
-//                                      server replays the day's deal plus your moves and plays the bots. The last move
-//                                      seals the hand on the ledger and adds it to the field. New players: 3 an hour per address.
-//   GET  /api/ledger?before=ID&limit=N the chain, newest first (N up to 100). Today's hands are hidden (everyone holds the
+//                                      server replays the day's deals plus your moves and plays the bots. The move that ends
+//                                      the game seals it on the ledger and adds it to the field. New players: 3 an hour per address.
+//   GET  /api/practice                 your unfinished practice game, if any
+//   POST /api/practice/new             start one (only once today's game is sealed): a game on random deals, not the day's
+//   POST /api/practice/act {id, n, action}  a move in it. A finished one is sealed on the ledger as kind 'practice' with its
+//                                      seed, and stays out of the field.
+//   GET  /api/ledger?before=ID&limit=N the chain, newest first (N up to 100). Today's games are hidden (everyone holds the
 //                                      same cards); a past day's entry also shows its seed, so anyone can check the deal.
 //   GET  /api/account, POST /api/codes, /api/load, /api/passkey, /api/logout: save codes and passkeys (shared Accounts)
 //
@@ -15,7 +20,7 @@
 // The account code is copied from moba-beat src/worker.js (itself from dawn-baton).
 import { dayEntry, entryInsert, seal, sha256 } from "./ledger.js";
 import { dailySeed, seedHash } from "../engine/daily.js";
-import { HUMAN, start, act as play, replay, view } from "../public/engine/pitch.js";
+import { HUMAN, startGame, actGame, replayGame, viewGame } from "../public/engine/pitch.js";
 
 const GAME = "nano-pitch";
 const COOKIE = "np";
@@ -86,37 +91,27 @@ async function player(ctx, create = false) {
 }
 const must = async (ctx) => { const p = await player(ctx); if (!p) throw new Oops("No player here.", 401); return p; };
 
-// ---------- the hand ----------
+// ---------- the game ----------
 
 const handOf = (env, playerId, day) =>
   env.DB.prepare("SELECT actions, done FROM pitch_hands WHERE player_id = ? AND day = ?").bind(playerId, day).first();
 
-const SCORE_COL = { "-4": "s_m4", "-3": "s_m3", "-2": "s_m2", "-1": "s_m1", 0: "s_0", 1: "s_p1", 2: "s_p2", 3: "s_p3", 4: "s_p4" };
-const BID_COL = { 0: "b_0", 2: "b_2", 3: "b_3", 4: "b_4" };
-
 async function fieldOf(env, day) {
   const r = await env.DB.prepare("SELECT * FROM pitch_days WHERE day = ?").bind(day).first();
   if (!r) return null;
-  return {
-    hands: r.hands,
-    scores: [-4, -3, -2, -1, 0, 1, 2, 3, 4].map((s) => r[SCORE_COL[s]]),   // how many finished on -4 .. +4
-    bids: { 0: r.b_0, 2: r.b_2, 3: r.b_3, 4: r.b_4 },
-    took: { high: r.p_high, low: r.p_low, jack: r.p_jack, game: r.p_game },
-    pitched: r.pitched, made: r.made,
-  };
+  return { games: r.games, hands: r.hands, places: [r.place_1, r.place_2, r.place_3, r.place_4] };
 }
 
-// What the page gets: the day, how many moves it has seen, the hand as the human may see it, and the field once done.
-async function answer(env, day, actions, state) {
-  const done = state.phase === "done";
-  return { day, n: actions.length, view: view(state), field: done ? await fieldOf(env, day) : null };
+// What the page gets: the day, how many moves it has seen, the game as the human may see it, and the field once it's over.
+async function answer(env, day, actions, game) {
+  return { day, n: actions.length, view: viewGame(game), field: game.over ? await fieldOf(env, day) : null };
 }
 
 async function getToday(ctx) {
   const { env } = ctx, { day, seed } = await today(env);
   const me = await player(ctx), row = me ? await handOf(env, me.id, day) : null;
   const actions = row ? JSON.parse(row.actions) : [];
-  return answer(env, day, actions, row ? replay(seed, actions) : start(seed));
+  return answer(env, day, actions, row ? replayGame(seed, actions) : startGame(seed));
 }
 
 // Only the fields a move needs, so nothing else can ride along into the ledger.
@@ -133,11 +128,11 @@ async function postAct(ctx) {
   const me = await player(ctx, true);
   const row = await handOf(env, me.id, day);
   const actions = row ? JSON.parse(row.actions) : [];
-  const stale = async (msg) => { throw new Oops(msg, 409, await answer(env, day, actions, replay(seed, actions))); };
-  if (row && row.done) await stale("Today's hand is already sealed.");
-  if (b.n !== actions.length) await stale("This hand moved on in another tab.");
+  const stale = async (msg) => { throw new Oops(msg, 409, await answer(env, day, actions, replayGame(seed, actions))); };
+  if (row && row.done) await stale("Today's game is already sealed.");
+  if (b.n !== actions.length) await stale("This game moved on in another tab.");
   let next;
-  try { next = play(replay(seed, actions), action); }
+  try { next = actGame(replayGame(seed, actions), action); }
   catch (e) { throw new Oops(e.message); }
   const moves = [...actions, action], t = now();
 
@@ -146,30 +141,80 @@ async function postAct(ctx) {
     `INSERT INTO pitch_hands (player_id, day, actions, done, final, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (player_id, day) DO UPDATE SET actions = excluded.actions, done = excluded.done, final = excluded.final, updated_at = excluded.updated_at
      WHERE pitch_hands.done = 0 AND json_array_length(pitch_hands.actions) = ?`);
-  if (next.phase !== "done") {
+  if (!next.over) {
     const r = await save.bind(me.id, day, JSON.stringify(moves), 0, null, t, t, actions.length).run();
-    if (!r.meta.changes) await stale("This hand moved on in another tab.");
+    if (!r.meta.changes) await stale("This game moved on in another tab.");
     return answer(env, day, moves, next);
   }
 
-  // Finished: the hand, its ledger entry and the field, in one batch.
-  const res = next.result, mine = (seat) => (seat === HUMAN ? 1 : 0);
-  const myBid = next.bids.find((x) => x.seat === HUMAN).bid;
-  const pitched = mine(next.pitcher), made = pitched && res.made ? 1 : 0;
-  const record = JSON.stringify({ day, player: me.id, actions: moves, pitcher: next.pitcher, bid: next.bid, points: res.points, final: res.final[HUMAN] });
-  const sc = SCORE_COL[res.final[HUMAN]], bc = BID_COL[myBid];
+  // Finished: the game, its ledger entry and the field, in one batch.
+  const mine = next.totals[HUMAN], place = 1 + next.totals.filter((x) => x > mine).length, pc = `place_${place}`;
+  const record = JSON.stringify({ day, player: me.id, actions: moves, hands: next.history.length, totals: next.totals, place });
   const field = env.DB.prepare(
-    `INSERT INTO pitch_days (day, hands, ${sc}, ${bc}, p_high, p_low, p_jack, p_game, pitched, made) VALUES (?, 1, 1, 1, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (day) DO UPDATE SET hands = hands + 1, ${sc} = ${sc} + 1, ${bc} = ${bc} + 1,
-       p_high = p_high + excluded.p_high, p_low = p_low + excluded.p_low, p_jack = p_jack + excluded.p_jack, p_game = p_game + excluded.p_game,
-       pitched = pitched + excluded.pitched, made = made + excluded.made`)
-    .bind(day, mine(res.high), mine(res.low), mine(res.jack), mine(res.gameWinner), pitched, made);
+    `INSERT INTO pitch_days (day, games, hands, ${pc}) VALUES (?, 1, ?, 1)
+     ON CONFLICT (day) DO UPDATE SET games = games + 1, hands = hands + excluded.hands, ${pc} = ${pc} + 1`)
+    .bind(day, next.history.length);
   const sealed = await seal(env.DB, async (prev) => {
-    const { hash, stmt } = await entryInsert(env.DB, prev, { kind: "hand", day, playerId: me.id, record, t });
-    return { hash, stmts: [save.bind(me.id, day, JSON.stringify(moves), 1, res.final[HUMAN], t, t, actions.length), stmt, field] };
+    const { hash, stmt } = await entryInsert(env.DB, prev, { kind: "game", day, playerId: me.id, record, t });
+    return { hash, stmts: [save.bind(me.id, day, JSON.stringify(moves), 1, mine, t, t, actions.length), stmt, field] };
   });
-  if (sealed.duplicate) await stale("Today's hand is already sealed.");
+  if (sealed.duplicate) await stale("Today's game is already sealed.");
   return { ...(await answer(env, day, moves, next)), hash: sealed.hash };
+}
+
+// ---------- practice games ----------
+
+const practiceOf = (env, playerId) =>
+  env.DB.prepare("SELECT id, seed, actions FROM pitch_practice WHERE player_id = ? AND done = 0 ORDER BY id DESC LIMIT 1").bind(playerId).first();
+const practiceAnswer = (row, actions, game) => ({ practice: row.id, n: actions.length, view: viewGame(game), field: null });
+
+async function getPractice(ctx) {
+  const me = await player(ctx), row = me ? await practiceOf(ctx.env, me.id) : null;
+  if (!row) return { practice: null };
+  const actions = JSON.parse(row.actions);
+  return practiceAnswer(row, actions, replayGame(row.seed, actions));
+}
+
+async function newPractice(ctx) {
+  const { env } = ctx, me = await must(ctx), { day } = await today(env);
+  const daily = await handOf(env, me.id, day);
+  if (!daily || !daily.done) throw new Oops("Finish today's game first.", 409);
+  const open = await practiceOf(env, me.id);
+  if (open) return practiceAnswer(open, JSON.parse(open.actions), replayGame(open.seed, JSON.parse(open.actions)));
+  if (!(await rateLimit(env, ctx.req, "practice", 30, 3600))) throw new Oops("Too many practice games from here. Try again later.", 429);
+  const seed = await sha256(`${await secret(env)}|practice|${newToken()}`);   // a deal nobody can predict; shown in the ledger once sealed
+  const t = now();
+  const row = await env.DB.prepare("INSERT INTO pitch_practice (player_id, day, seed, actions, done, created_at, updated_at) VALUES (?, ?, ?, '[]', 0, ?, ?) RETURNING id")
+    .bind(me.id, day, seed, t, t).first();
+  return practiceAnswer(row, [], startGame(seed));
+}
+
+async function postPractice(ctx) {
+  const b = await body(ctx.req), { env } = ctx, me = await must(ctx), action = cleanAction(b.action);
+  const row = await env.DB.prepare("SELECT id, seed, actions, done, day FROM pitch_practice WHERE id = ? AND player_id = ?").bind(Number(b.id), me.id).first();
+  if (!row) throw new Oops("No such practice game.", 404);
+  const actions = JSON.parse(row.actions);
+  const stale = (msg) => { throw new Oops(msg, 409, row.done ? { practice: null } : practiceAnswer(row, actions, replayGame(row.seed, actions))); };
+  if (row.done) stale("That practice game is already sealed.");
+  if (b.n !== actions.length) stale("This game moved on in another tab.");
+  let next;
+  try { next = actGame(replayGame(row.seed, actions), action); }
+  catch (e) { throw new Oops(e.message); }
+  const moves = [...actions, action], t = now();
+  const save = env.DB.prepare("UPDATE pitch_practice SET actions = ?, done = ?, updated_at = ? WHERE id = ? AND done = 0 AND json_array_length(actions) = ?");
+  if (!next.over) {
+    const r = await save.bind(JSON.stringify(moves), 0, t, row.id, actions.length).run();
+    if (!r.meta.changes) stale("This game moved on in another tab.");
+    return practiceAnswer(row, moves, next);
+  }
+  const place = 1 + next.totals.filter((x) => x > next.totals[HUMAN]).length;
+  const record = JSON.stringify({ day: row.day, player: me.id, seed: row.seed, actions: moves, hands: next.history.length, totals: next.totals, place });
+  const sealed = await seal(env.DB, async (prev) => {
+    const { hash, stmt } = await entryInsert(env.DB, prev, { kind: "practice", day: row.day, playerId: me.id, record, t });
+    return { hash, stmts: [save.bind(JSON.stringify(moves), 1, t, row.id, actions.length), stmt] };
+  });
+  if (sealed.duplicate) stale("That practice game is already sealed.");
+  return { ...practiceAnswer(row, moves, next), hash: sealed.hash };
 }
 
 async function ledger(ctx) {
@@ -180,7 +225,7 @@ async function ledger(ctx) {
   const key = results.some((e) => e.kind === "day" && e.day < day) ? await secret(env) : null;
   const entries = [];
   for (const e of results) {
-    if (e.kind === "hand" && e.day >= day) entries.push({ ...e, record: null });   // today's hands: shown once the day is over
+    if (e.kind !== "day" && e.day >= day) entries.push({ ...e, record: null });   // today's games (and older hands): shown once the day is over
     else if (e.kind === "day" && e.day < day) entries.push({ ...e, seed: await dailySeed(key, e.day) });
     else entries.push(e);
   }
@@ -299,6 +344,7 @@ async function logout(ctx) {
 
 const ROUTES = {
   "GET /api/today": getToday, "POST /api/act": postAct, "GET /api/ledger": ledger,
+  "GET /api/practice": getPractice, "POST /api/practice/new": newPractice, "POST /api/practice/act": postPractice,
   "GET /api/account": account, "POST /api/codes": codes, "POST /api/load": loadCode, "POST /api/passkey": passkey, "POST /api/logout": logout,
 };
 

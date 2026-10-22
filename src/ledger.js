@@ -6,9 +6,9 @@
 // Two kinds of entry:
 //   day   { day, seed_hash }: SHA-256 of the day's secret seed. It proves the deal was fixed before anyone played; the seed
 //         itself is shown once the day is over, so anyone can rebuild the deal and check every hand.
-//   hand  { day, player, actions, pitcher, bid, points, final }: a player's finished hand: their bid and cards in order, and
-//         the score the server worked out by replaying them. Players are ids, never names. Hidden until the day is over,
-//         because everyone holds the same six cards.
+//   game  { day, player, actions, hands, totals, place }: a player's finished game: every bid and card they played, in order,
+//         and the totals and place the server worked out by replaying them. Players are ids, never names. Hidden until the
+//         day is over, because everyone holds the same cards. (Older entries of kind 'hand' are single hands.)
 //
 // The first entry chains from GENESIS. Changing any old record breaks its hash and every hash after it. prev_hash is
 // UNIQUE, so the chain can't fork.
@@ -26,7 +26,7 @@ export async function head(db) {
 }
 
 // Two requests can read the same head at once; prev_hash UNIQUE lets only one of them build on it. The other is sealed
-// again on the new head. Another UNIQUE clash (that day's entry, that player's hand that day) means it's already there.
+// again on the new head. Another UNIQUE clash (that day's entry, that player's game that day) means it's already there.
 const chainClash = (e) => /UNIQUE/i.test(String(e && e.message)) && /pitch_ledger\.(prev_)?hash/.test(String(e.message));
 const anyUnique = (e) => /UNIQUE/i.test(String(e && e.message));
 

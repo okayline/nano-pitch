@@ -222,8 +222,8 @@ export function botPlay(v) {
 // state = { seed, dealer, dealt, hands, bids, phase: "bid" | "play" | "done", turn, pitcher, bid, trump, trick, tricks, result }
 // Plain JSON, so the Worker can keep it. `start` and `act` hand back a state waiting on the human (or finished).
 
-export function start(seed) {
-  const { hands, dealer } = deal(seed);
+export function start(seed, dealerSeat) {
+  const dealt = deal(seed), hands = dealt.hands, dealer = dealerSeat ?? dealt.dealer;
   return advance({
     seed, dealer, dealt: hands.map((h) => h.slice()), hands,
     bids: [], phase: "bid", turn: (dealer + 1) % 4,
@@ -296,13 +296,6 @@ export function act(state, action) {
   return advance(s);
 }
 
-// Rebuild a hand from the seed and the human's actions.
-export function replay(seed, actions) {
-  let s = start(seed);
-  for (const a of actions) s = act(s, a);
-  return s;
-}
-
 // What the human's screen may see: their own cards, how many the bots hold, and what has been bid and played.
 export function view(s) {
   const mine = s.turn === HUMAN && s.phase !== "done";
@@ -312,5 +305,71 @@ export function view(s) {
     pitcher: s.pitcher, bid: s.bid, trump: s.trump, trick: s.trick, tricks: s.tricks,
     legal: mine && s.phase === "play" ? legalPlays(s.hands[HUMAN], s.trick, s.trump) : null,
     result: s.result,
+  };
+}
+
+// ---------- the game ----------
+// A day is one game: hands are dealt in turn, the dealer moving one seat clockwise each time, until a seat has 11 points
+// and nobody else has as many. If two seats tie at the top, another hand is dealt. Hand 0 is the day's deal itself; hand n
+// is dealt from `seed:hn`. A game = { seed, no, totals, history, hand, over }: `hand` is the hand being played (or, when
+// the game is over, the last one) and `history` holds a summary of each finished hand. Plain JSON, like a hand.
+
+export const TARGET = 11;
+
+const handSeed = (seed, no) => (no === 0 ? seed : `${seed}:h${no}`);
+const dealerOf = (seed, no) => (deal(seed).dealer + no) % 4;
+
+// The seat that has won, or null while the game goes on.
+export function leader(totals) {
+  const top = Math.max(...totals);
+  const at = totals.flatMap((t, seat) => (t === top ? [seat] : []));
+  return top >= TARGET && at.length === 1 ? at[0] : null;
+}
+
+// What happened in a finished hand, with the cards behind HIGH, LOW and JACK.
+function summary(s, no) {
+  const r = s.result;
+  const plays = s.tricks.flatMap((t) => t.plays).filter((p) => suitOf(p.card) === s.trump);
+  const card = (seat, c) => ({ seat, card: c });
+  const hi = plays.reduce((a, p) => (rankOf(p.card) > rankOf(a.card) ? p : a));
+  const lo = plays.reduce((a, p) => (rankOf(p.card) < rankOf(a.card) ? p : a));
+  const jack = plays.find((p) => rankOf(p.card) === 11);
+  return {
+    no, dealer: s.dealer, trump: s.trump, pitcher: s.pitcher, bid: s.bid, made: r.made, points: r.points, final: r.final,
+    high: card(r.high, hi.card), low: card(r.low, lo.card), jack: jack ? card(r.jack, jack.card) : null,
+    gameWinner: r.gameWinner, gameTotals: r.gameTotals,
+  };
+}
+
+export function startGame(seed) {
+  return { seed, no: 0, totals: [0, 0, 0, 0], history: [], hand: start(seed, dealerOf(seed, 0)), over: false };
+}
+
+// The human's move in the game. Returns a new game; throws if illegal or the game is over.
+export function actGame(game, action) {
+  if (game.over) throw new Error("The game is over.");
+  const g = structuredClone(game);
+  g.hand = act(g.hand, action);
+  if (g.hand.phase !== "done") return g;
+  g.history.push(summary(g.hand, g.no));
+  g.totals = g.totals.map((t, seat) => t + g.hand.result.final[seat]);
+  if (leader(g.totals) !== null) { g.over = true; return g; }
+  g.no++;
+  g.hand = start(handSeed(g.seed, g.no), dealerOf(g.seed, g.no));
+  return g;
+}
+
+// Rebuild a game from the seed and the human's actions, in order, across all its hands.
+export function replayGame(seed, actions) {
+  let g = startGame(seed);
+  for (const a of actions) g = actGame(g, a);
+  return g;
+}
+
+// What the human's screen may see of the game: the current hand, the running totals and the finished hands.
+export function viewGame(g) {
+  return {
+    ...view(g.hand), no: g.no, totals: g.totals, history: g.history, over: g.over, target: TARGET,
+    place: g.over ? 1 + g.totals.filter((t) => t > g.totals[HUMAN]).length : null,
   };
 }

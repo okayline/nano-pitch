@@ -63,10 +63,10 @@ function setup() {
 }
 const today = () => new Date().toISOString().slice(0, 10);
 
-// Plays the first allowed bid and the first legal card until the hand is done. Returns the last answer.
+// Plays the first allowed bid and the first legal card until the game is over. Returns the last answer.
 async function playThrough(call, cookie) {
   let t = await call("/api/today", { cookie }), c = cookie;
-  while (t.view.phase !== "done") {
+  while (!t.view.over) {
     const v = t.view;
     const action = v.phase === "bid" ? { type: "bid", bid: v.bidOptions[0] } : { type: "play", card: v.legal[0] };
     const r = await call("/api/act", { body: { day: t.day, n: t.n, action }, cookie: c });
@@ -97,34 +97,98 @@ test("looking at today seals the day's entry with the seed's hash and makes no p
   assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM pitch_ledger").get().n, 1);
 });
 
-test("a whole hand: saved move by move, sealed once on the ledger, added to the field", async () => {
+test("a whole game: saved move by move, sealed once on the ledger, added to the field", async () => {
   const { call, raw } = setup();
   const { t, cookie } = await playThrough(call);
   assert.ok(cookie);
-  const hand = raw.prepare("SELECT * FROM pitch_hands").get();
-  assert.equal(hand.done, 1);
-  const entry = raw.prepare("SELECT * FROM pitch_ledger WHERE kind = 'hand'").get();
+  const game = raw.prepare("SELECT * FROM pitch_hands").get();
+  assert.equal(game.done, 1);
+  const entry = raw.prepare("SELECT * FROM pitch_ledger WHERE kind = 'game'").get();
   const prev = raw.prepare("SELECT hash FROM pitch_ledger WHERE kind = 'day'").get().hash;
   assert.equal(entry.prev_hash, prev);
   assert.equal(entry.hash, sha(prev + "|" + entry.record));
   const rec = JSON.parse(entry.record);
-  assert.deepEqual(rec.actions, JSON.parse(hand.actions));
-  assert.equal(rec.final, hand.final);
+  assert.deepEqual(rec.actions, JSON.parse(game.actions));
+  assert.equal(rec.totals[0], game.final);
+  assert.equal(rec.hands, t.view.history.length);
+  assert.deepEqual(rec.totals, t.view.totals);
   assert.equal(rec.player, entry.player_id);
   assert.equal(t.hash, entry.hash);
-  // the field: one hand, counted under its score and its bid
-  const col = { "-4": "s_m4", "-3": "s_m3", "-2": "s_m2", "-1": "s_m1", 0: "s_0", 1: "s_p1", 2: "s_p2", 3: "s_p3", 4: "s_p4" }[hand.final];
+  assert.ok(t.view.history.length >= 2);   // a game to 11 takes several hands
+  // the field: one game, counted under its place
   const day = raw.prepare("SELECT * FROM pitch_days").get();
-  assert.equal(day.hands, 1);
-  assert.equal(day[col], 1);
-  assert.equal(day.b_0 + day.b_2 + day.b_3 + day.b_4, 1);
-  assert.equal(t.field.hands, 1);
-  // a sealed hand takes no more moves, and reloading shows it finished
+  assert.equal(day.games, 1);
+  assert.equal(day.hands, t.view.history.length);
+  assert.equal(day["place_" + rec.place], 1);
+  assert.equal(day.place_1 + day.place_2 + day.place_3 + day.place_4, 1);
+  assert.deepEqual(t.field, { games: 1, hands: day.hands, places: [day.place_1, day.place_2, day.place_3, day.place_4] });
+  // a sealed game takes no more moves, and reloading shows it finished
   const again = await call("/api/act", { body: { day: t.day, n: t.n, action: { type: "bid", bid: 0 } }, cookie });
   assert.equal(again.status, 409);
   const reload = await call("/api/today", { cookie });
-  assert.equal(reload.view.phase, "done");
-  assert.deepEqual(reload.view.result, t.view.result);
+  assert.equal(reload.view.over, true);
+  assert.deepEqual(reload.view.totals, t.view.totals);
+  assert.deepEqual(reload.view.history, t.view.history);
+});
+
+test("a game still being played carries on across hands and reloads", async () => {
+  const { call } = setup();
+  let t = await call("/api/today"), c = null, handsDone = 0;
+  while (!t.view.over && handsDone < 1) {
+    const v = t.view;
+    const action = v.phase === "bid" ? { type: "bid", bid: v.bidOptions[0] } : { type: "play", card: v.legal[0] };
+    const r = await call("/api/act", { body: { day: t.day, n: t.n, action }, cookie: c });
+    assert.equal(r.status, 200, r.error);
+    c = r.cookie || c; t = r; handsDone = t.view.history.length;
+  }
+  assert.equal(t.view.over, false);
+  assert.equal(t.view.no, 1);   // the second hand is being played
+  assert.equal(t.view.history.length, 1);
+  const reload = await call("/api/today", { cookie: c });
+  assert.equal(reload.n, t.n);
+  assert.deepEqual(reload.view.totals, t.view.totals);
+});
+
+test("practice games: refused until today's game is sealed, then random deals sealed as 'practice', outside the field", async () => {
+  const { call, raw } = setup();
+  const t = await call("/api/today");
+  const first = t.view.phase === "bid" ? { type: "bid", bid: t.view.bidOptions[0] } : { type: "play", card: t.view.legal[0] };
+  const r0 = await call("/api/act", { body: { day: t.day, n: 0, action: first } });
+  assert.equal((await call("/api/practice/new", { body: {}, cookie: r0.cookie })).status, 409);   // today's game isn't done
+  assert.equal((await call("/api/practice", { cookie: r0.cookie })).practice, null);
+  const { cookie } = await playThrough(call, r0.cookie);
+  const fieldBefore = raw.prepare("SELECT * FROM pitch_days").get();
+  let p = await call("/api/practice/new", { body: {}, cookie });
+  assert.equal(p.status, 200, p.error);
+  const id = p.practice;
+  const seed = raw.prepare("SELECT seed FROM pitch_practice WHERE id = ?").get(id).seed;
+  assert.match(seed, /^[0-9a-f]{64}$/);
+  assert.equal((await call("/api/practice/new", { body: {}, cookie })).practice, id);   // one at a time: it gives the open one back
+  assert.deepEqual((await call("/api/practice", { cookie })).view.hand, p.view.hand);
+  while (!p.view.over) {
+    const v = p.view, action = v.phase === "bid" ? { type: "bid", bid: v.bidOptions[0] } : { type: "play", card: v.legal[0] };
+    const r = await call("/api/practice/act", { body: { id, n: p.n, action }, cookie });
+    assert.equal(r.status, 200, r.error);
+    p = r;
+  }
+  const entry = raw.prepare("SELECT * FROM pitch_ledger WHERE kind = 'practice'").get();
+  const rec = JSON.parse(entry.record);
+  assert.equal(rec.seed, seed);
+  assert.deepEqual(rec.totals, p.view.totals);
+  assert.equal(rec.hands, p.view.history.length);
+  assert.equal(p.hash, entry.hash);
+  assert.equal(raw.prepare("SELECT done FROM pitch_practice WHERE id = ?").get(id).done, 1);
+  assert.deepEqual(raw.prepare("SELECT * FROM pitch_days").get(), fieldBefore);   // the field is the daily game only
+  assert.equal(p.field, null);
+  const again = await call("/api/practice/act", { body: { id, n: p.n, action: { type: "bid", bid: 0 } }, cookie });
+  assert.equal(again.status, 409);
+  assert.equal((await call("/api/practice", { cookie })).practice, null);
+  // another player can't touch it
+  const other = await call("/api/act", { body: { day: t.day, n: 0, action: first }, ip: "7.7.7.7" });
+  assert.equal((await call("/api/practice/act", { body: { id, n: 0, action: first }, cookie: other.cookie })).status, 404);
+  // and the ledger hides today's practice records
+  const l = await call("/api/ledger");
+  assert.equal(l.entries.find((e) => e.kind === "practice").record, null);
 });
 
 test("a move from a stale tab, an illegal move and another day are refused", async () => {
@@ -148,8 +212,8 @@ test("the ledger hides today's hands and shows a past day's seed", async () => {
   await call("/api/today");
   raw.prepare("INSERT INTO pitch_ledger (kind, day, record, prev_hash, hash, created_at) VALUES ('day', '2000-01-01', '{}', 'p-old', 'h-old', 1)").run();
   const l = await call("/api/ledger");
-  const hand = l.entries.find((e) => e.kind === "hand");
-  assert.equal(hand.record, null);
+  const game = l.entries.find((e) => e.kind === "game");
+  assert.equal(game.record, null);
   const secret = raw.prepare("SELECT value FROM pitch_meta WHERE key = 'secret'").get().value;
   const old = l.entries.find((e) => e.day === "2000-01-01");
   assert.equal(old.seed, createHmac("sha256", secret).update("daily:2000-01-01").digest("hex"));

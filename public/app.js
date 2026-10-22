@@ -1,4 +1,4 @@
-// Daily Pitch screen: an 80-column text screen in the scoundrel.exe / Daily Digital Demon Dungeon style.
+// Daily Pitch screen (a day is one game to 11 points, several hands): an 80-column text screen in the scoundrel.exe / Daily Digital Demon Dungeon style.
 // Everything is drawn as lines of text in one <pre>. A line is a list of segments: plain strings, or
 // { t, c (css class), k (a key: clicking it is the same as pressing it) }, or { card, c, k } for a card,
 // or { input, w } for the save code box. Every character is one column; suit symbols sit in a 1-column box.
@@ -17,6 +17,7 @@ document.getElementById("ver").textContent = VERSION;
 let T = null;          // the last answer from /api/today or /api/act: { day, n, view, field }
 let mode = "loading";  // loading | game | account
 let busy = false;
+let seen = 0;          // how many finished hands the player has been shown the result of
 let msg = "";
 let acct = null, newCode = null, acctMsg = "";
 
@@ -92,7 +93,7 @@ function draw() {
   if (box && typed != null) box.value = typed;
 }
 
-const header = () => [spread(S("DAILY PITCH", "you"), T ? stamp(T.day) + " // " + VERSION : VERSION), "="];
+const header = () => [spread([S("DAILY PITCH", "you"), ...(T && T.practice ? [S("  PRACTICE", "dim")] : [])], T ? stamp(T.day) + " // " + VERSION : VERSION), "="];
 
 function loadingScreen() { return [...header(), "~", center(msg || "DEALING..."), "~", "="]; }
 
@@ -154,17 +155,22 @@ function trickLine(v) {
   return segs;
 }
 
+const ORD = ["", "1ST", "2ND", "3RD", "4TH"];
+const pending = () => T.view.history.length > seen;   // a finished hand whose result hasn't been shown yet
+const totalsLine = (v) => [0, 1, 2, 3].map((s) => [S(NAMES[s] + " ", s === HUMAN ? "you" : "dim"), String(v.totals[s]), s < 3 ? "   " : ""]).flat();
+
 function gameScreen() {
   const v = T.view;
-  if (v.phase === "done") return resultScreen();
+  if (pending()) return handScreen(v.history[seen]);
+  if (v.over) return finalScreen();
   const tt = tableTrick(v);
   const trumpSeg = v.trump === null ? [S("TRUMP ", "dim"), S("--", "dim")] : [S("TRUMP ", "dim"), { t: SUIT[v.trump], c: RED[v.trump] ? "red g" : "g" }];
-  const pitch = v.pitcher === null ? [] : [S("   PITCHER ", "dim"), NAMES[v.pitcher] + " " + v.bid];
+  const pitch = v.pitcher === null ? [] : [S("   BIDDER ", "dim"), NAMES[v.pitcher] + " " + v.bid];
   const won = [S("TRICKS ", "dim"), [0, 1, 2, 3].map((s) => NAMES[s][0] + " " + tricksWon(v, s)).join("  ")];
   const middle = v.phase === "bid" ? S("BIDDING", "dim") : [playedBy(tt, 1), "            ", playedBy(tt, 3)];
   return [
     ...header(),
-    "",
+    spread([S("HAND " + (v.no + 1), "dim"), "   ", ...totalsLine(v)], S("FIRST TO " + v.target, "dim")),
     center([S("NORTH", ""), dealerMark(v, 2), "  ", backs(v.counts[2]), "  ", bidText(v, 2)]),
     "",
     cols3("", v.phase === "bid" ? "" : playedBy(tt, 2), ""),
@@ -186,42 +192,55 @@ function gameScreen() {
 
 // ---------- the result and the field ----------
 
-function resultScreen() {
-  const v = T.view, r = v.result, f = T.field;
-  const trumps = v.tricks.flatMap((t) => t.plays).filter((p) => suitOf(p.card) === v.trump).map((p) => p.card);
-  const hi = trumps.reduce((a, c) => (rankOf(c) > rankOf(a) ? c : a));
-  const lo = trumps.reduce((a, c) => (rankOf(c) < rankOf(a) ? c : a));
-  const jack = trumps.find((c) => rankOf(c) === 11);
-  const who = (seat) => S(NAMES[seat], seat === HUMAN ? "you" : "");
-  const mine = r.final[HUMAN];
+const who = (seat) => S(NAMES[seat], seat === HUMAN ? "you" : "");
+
+// The result of one finished hand (h is the hand's summary from the server).
+function handScreen(h) {
+  const v = T.view, last = h.no === v.history.length - 1;
+  return [
+    ...header(),
+    spread(S(`HAND ${h.no + 1} OVER`, "you"), [S("TRUMP ", "dim"), { t: SUIT[h.trump], c: RED[h.trump] ? "red g" : "g" }]),
+    "",
+    [dots("HIGH"), who(h.high.seat), "  ", C(h.high.card, "dim")],
+    [dots("LOW"), who(h.low.seat), S("  won the trick with ", "dim"), C(h.low.card, "dim")],
+    [dots("JACK"), ...(h.jack === null ? [S("not in play", "dim")] : [who(h.jack.seat), "  ", C(h.jack.card, "dim")])],
+    [dots("GAME"), ...(h.gameWinner === null ? [S("tied: nobody", "dim")] : [who(h.gameWinner), S(`  ${h.gameTotals[h.gameWinner]} card points`, "dim")])],
+    [dots("PITCH"), who(h.pitcher), ` bid ${h.bid}: `, h.made ? S("MADE IT", "you") : S(`SET (${-h.bid})`, "")],
+    "",
+    [dots("THIS HAND"), [0, 1, 2, 3].map((x) => NAMES[x] + " " + signed(h.final[x])).join("   ")],
+    [dots("TOTALS"), ...totalsLine(v)],
+    "~",
+    "-",
+    spread(S(last && v.over ? "[ENTER] SEE THE RESULT" : "[ENTER] NEXT HAND", "", "go"), S("[A]CCOUNT", "", "a")),
+    "=",
+  ];
+}
+
+// The finished game, and the field: how everyone placed on the same deals.
+function finalScreen() {
+  const v = T.view, f = T.field, place = v.place;
   const rows = [
     ...header(),
-    spread(S("HAND OVER", "you"), [S("TRUMP ", "dim"), { t: SUIT[v.trump], c: RED[v.trump] ? "red g" : "g" }]),
+    spread(S("GAME OVER", "you"), S(place === 1 ? "YOU WON" : `YOU PLACED ${ORD[place]}`, "you")),
     "",
-    [dots("HIGH"), who(r.high), "  ", C(hi, "dim")],
-    [dots("LOW"), who(r.low), S("  won the trick with ", "dim"), C(lo, "dim")],
-    [dots("JACK"), ...(r.jack === null ? [S("not in play", "dim")] : [who(r.jack), "  ", C(jack, "dim")])],
-    [dots("GAME"), ...(r.gameWinner === null ? [S("tied: nobody", "dim")] : [who(r.gameWinner), S(`  ${r.gameTotals[r.gameWinner]} card points`, "dim")])],
-    [dots("PITCH"), who(v.pitcher), ` bid ${v.bid}: `, r.made ? S("MADE IT", "you") : S(`SET (${-v.bid})`, "")],
-    "",
-    [dots("YOUR SCORE"), S(signed(mine) + " today", "you")],
+    [dots("FINAL", 12), ...totalsLine(v)],
+    [dots("HANDS", 12), String(v.history.length)],
     "",
   ];
-  if (f && f.hands > 0) {
-    const scores = [-4, -3, -2, -1, 0, 1, 2, 3, 4];
-    const less = scores.reduce((n, s, i) => n + (s < mine ? f.scores[i] : 0), 0);
-    const myBid = v.bids.find((x) => x.seat === HUMAN).bid;
-    const bidName = (b) => (b ? String(b) : "PASS");
-    const topBid = [0, 2, 3, 4].reduce((a, b) => (f.bids[b] > f.bids[a] ? b : a), 0);
+  const finals = v.history.map((h) => signed(h.final[HUMAN]));
+  for (let i = 0; i < finals.length; i += 20) rows.push([S(i ? "" : "YOUR HANDS ", "dim"), i ? " ".repeat(11) : "", finals.slice(i, i + 20).join(" ")]);
+  rows.push("");
+  if (!T.practice && f && f.games > 0) {
+    const won = Math.round((100 * f.places[0]) / f.games);
     rows.push(
-      [dots("THE FIELD"), `${f.hands} player${f.hands === 1 ? "" : "s"} on this deal`],
-      f.hands === 1 ? S("  you're the first to finish today", "dim")
-        : `  you made ${signed(mine)}; ${Math.round((100 * less) / f.hands)}% of players made less`,
-      `  you bid ${bidName(myBid)}; most bid ${bidName(topBid)} (${Math.round((100 * f.bids[topBid]) / f.hands)}%)`,
-      [S("  took it: ", "dim"), `HIGH ${f.took.high}  LOW ${f.took.low}  JACK ${f.took.jack}  GAME ${f.took.game}`],
+      [dots("THE FIELD"), `${f.games} player${f.games === 1 ? "" : "s"} finished on these deals`],
+      f.games === 1 ? S("  you're the first to finish today", "dim") : `  you placed ${ORD[place]}; ${won}% of players won their game`,
+      `  an average game took ${(f.hands / f.games).toFixed(1)} hands`,
     );
   }
-  rows.push("~", msg ? S(msg, "you") : "", "-", spread([S("NEXT DEAL IN ", "dim"), untilMidnight()], S("[A]CCOUNT", "", "a")), "=");
+  const left = T.practice ? [S("[P] ANOTHER PRACTICE GAME", "", "practice"), "  ", S("[T]ODAY", "", "daily")]
+    : [S("[P]RACTICE GAME", "", "practice"), S("   NEXT DEAL IN ", "dim"), untilMidnight()];
+  rows.push("~", msg ? S(msg, "you") : "", "-", spread(left, S("[A]CCOUNT", "", "a")), "=");
   return rows;
 }
 
@@ -248,20 +267,29 @@ async function api(path, data) {
   return r.json().catch(() => ({ error: "That didn't work. Try again." }));
 }
 
+async function practice() {
+  if (busy) return;
+  busy = true; msg = ""; draw();
+  const r = await api("practice/new", {});
+  busy = false;
+  if (r.error) { msg = r.error; return draw(); }
+  T = { day: T.day, n: r.n, view: r.view, field: null, practice: r.practice }; seen = T.view.history.length; draw();
+}
+
 async function load() {
   const r = await api("today");
   if (r.error) { msg = r.error; mode = "loading"; return draw(); }
-  T = r; msg = ""; mode = "game"; draw();
+  T = { ...r, practice: null }; msg = ""; mode = "game"; seen = T.view.history.length; draw();   // a game reloaded in progress doesn't replay old results
 }
 
 async function send(action) {
   if (busy || !T) return;
   busy = true; msg = ""; draw();
-  const r = await api("act", { day: T.day, n: T.n, action });
+  const r = T.practice ? await api("practice/act", { id: T.practice, n: T.n, action }) : await api("act", { day: T.day, n: T.n, action });
   busy = false;
-  if (r.view) T = { day: r.day, n: r.n, view: r.view, field: r.field };   // a refused move still brings the hand as it is
+  if (r.view) T = { day: T.day, n: r.n, view: r.view, field: r.field, practice: T.practice };   // a refused move still brings the hand as it is
   if (r.error) msg = r.error;
-  else if (r.view.phase === "done") msg = "Sealed on the ledger.";
+  else if (r.view.over) msg = "Sealed on the ledger.";
   draw();
 }
 
@@ -317,6 +345,10 @@ function press(k) {
   if (mode !== "game" || !T) return;
   if (k === "a") return openAccount();
   const v = T.view;
+  if (k === "go") { if (pending()) { seen = v.history.length; msg = ""; draw(); } return; }
+  if (k === "practice" && v.over) return practice();
+  if (k === "daily" && T.practice) return load();
+  if (pending()) return;   // the result of a hand is on screen: moves wait until it's dismissed
   if (k[0] === "b" && v.phase === "bid") return send({ type: "bid", bid: Number(k.slice(1)) });
   if (k[0] === "c" && v.phase === "play") return send({ type: "play", card: Number(k.slice(1)) });
 }
@@ -338,6 +370,8 @@ document.addEventListener("keydown", (e) => {
   if (mode !== "game" || !T) return;
   const v = T.view;
   if (key === "a") return press("a");
+  if (pending()) { if (key === "enter" || key === " ") { e.preventDefault(); press("go"); } return; }
+  if (v.over) { if (key === "p") press("practice"); else if (key === "t") press("daily"); return; }
   if (v.phase === "bid" && v.turn === HUMAN) {
     const bid = key === "p" || key === "0" ? 0 : ["2", "3", "4"].includes(key) ? Number(key) : null;
     if (bid !== null && v.bidOptions.includes(bid)) send({ type: "bid", bid });
@@ -349,5 +383,5 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-setInterval(() => { if (mode === "game" && T && T.view.phase === "done") draw(); }, 1000);   // the countdown
+setInterval(() => { if (mode === "game" && T && T.view.over && !pending()) draw(); }, 1000);   // the countdown
 load();

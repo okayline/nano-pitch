@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import {
   HUMAN, cardCode, cardFromCode, gamePoints, deal, shuffledDeck, bidOptions, isForced, legalPlays, trickWinner,
-  gameWinnerOf, scoreHand, estimate, bestSuit, botBid, botPlay, start, act, replay, advance, view, suitOf,
+  gameWinnerOf, scoreHand, estimate, bestSuit, botBid, botPlay, start, act, advance, view, suitOf,
+  TARGET, leader, startGame, actGame, replayGame, viewGame,
 } from "../public/engine/pitch.js";
 import { dailySeed, seedHash } from "../engine/daily.js";
 
@@ -174,10 +175,70 @@ test("120 seeds: every hand finishes, all 24 cards are played once, points are c
   }
 });
 
-test("replay: the seed plus the human's actions rebuild the same hand", () => {
-  for (const seed of ["seed-3", "seed-17", "seed-60"]) {
-    const { s, actions } = playOut(seed);
-    assert.deepEqual(replay(seed, actions), s);
+// Plays a whole game: the first allowed bid and the first legal card each time, recording the actions.
+function playGame(seed) {
+  let g = startGame(seed);
+  const actions = [];
+  while (!g.over) {
+    const v = viewGame(g);
+    const a = v.phase === "bid" ? { type: "bid", bid: v.bidOptions[0] } : { type: "play", card: v.legal[0] };
+    actions.push(a);
+    g = actGame(g, a);
+  }
+  return { g, actions };
+}
+
+test("leader: 11 or more and alone at the top; a tie at the top plays on", () => {
+  assert.equal(leader([11, 3, 2, 1]), 0);
+  assert.equal(leader([4, 12, 11, 0]), 1);
+  assert.equal(leader([10, 9, 8, 7]), null); // nobody at 11 yet
+  assert.equal(leader([11, 11, 0, 0]), null); // tied at the top
+  assert.equal(leader([13, 13, 13, 2]), null);
+  assert.equal(leader([-3, 11, -4, 0]), 1); // scores can go below zero
+  assert.equal(TARGET, 11);
+});
+
+test("the game: hands follow one another, the dealer moves one seat each hand, hand 0 is the day's own deal", () => {
+  const g0 = startGame("seed-5");
+  assert.equal(g0.no, 0);
+  assert.deepEqual(g0.hand.dealt, start("seed-5").dealt);
+  assert.equal(g0.hand.dealer, deal("seed-5").dealer);
+  const { g } = playGame("seed-5");
+  assert.ok(g.history.length >= 2);
+  g.history.forEach((h, i) => {
+    assert.equal(h.no, i);
+    assert.equal(h.dealer, (deal("seed-5").dealer + i) % 4);
+  });
+  // totals are the sum of every hand's final scores, and the game ended with exactly one leader
+  const sum = [0, 1, 2, 3].map((seat) => g.history.reduce((n, h) => n + h.final[seat], 0));
+  assert.deepEqual(g.totals, sum);
+  assert.equal(g.over, true);
+  assert.notEqual(leader(g.totals), null);
+  // every hand before the last left nobody alone at 11
+  let running = [0, 0, 0, 0];
+  for (const h of g.history.slice(0, -1)) { running = running.map((t, k) => t + h.final[k]); assert.equal(leader(running), null); }
+  assert.throws(() => actGame(g, { type: "bid", bid: 0 })); // a finished game takes no more moves
+});
+
+test("20 games: each finishes, and the seed plus the human's actions rebuild the same game", () => {
+  for (let i = 0; i < 20; i++) {
+    const seed = "game-" + i;
+    const { g, actions } = playGame(seed);
+    assert.deepEqual(replayGame(seed, actions), g);
+    const v = viewGame(g);
+    assert.equal(v.over, true);
+    assert.equal(v.place, 1 + g.totals.filter((t) => t > g.totals[HUMAN]).length);
+    assert.equal("hands" in v, false);
+  }
+});
+
+test("a hand's summary names the cards behind HIGH, LOW and JACK", () => {
+  const { g } = playGame("seed-9");
+  for (const h of g.history) {
+    assert.equal(suitOf(h.high.card), h.trump);
+    assert.equal(suitOf(h.low.card), h.trump);
+    assert.ok(h.jack === null || (suitOf(h.jack.card) === h.trump && h.jack.card % 13 === 9)); // a jack is rank 11, so c%13 is 9
+    assert.equal(h.points.reduce((a, b) => a + b, 0), 2 + (h.jack ? 1 : 0) + (h.gameWinner !== null ? 1 : 0));
   }
 });
 
