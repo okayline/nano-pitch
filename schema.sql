@@ -27,8 +27,12 @@ CREATE TABLE IF NOT EXISTS pitch_meta (
 CREATE TABLE IF NOT EXISTS pitch_players (
   id          INTEGER PRIMARY KEY,
   token_hash  TEXT NOT NULL UNIQUE,
-  created_at  INTEGER NOT NULL
+  created_at  INTEGER NOT NULL,
+  name        TEXT,                   -- a random two-word name, given when the account is first looked at; rerolled, never typed
+  name_key    TEXT,                   -- lowercase name, so names are unique ignoring case (index pitch_players_name)
+  pfp         TEXT                    -- the player's profile pic (an emoji from PFP_POOL), their choice; none: the default
 );
+CREATE UNIQUE INDEX IF NOT EXISTS pitch_players_name ON pitch_players (name_key);
 CREATE TABLE IF NOT EXISTS pitch_sessions (
   token_hash  TEXT PRIMARY KEY,
   player_id   INTEGER NOT NULL REFERENCES pitch_players(id) ON DELETE CASCADE,
@@ -53,6 +57,7 @@ CREATE TABLE IF NOT EXISTS pitch_hands (
   final       INTEGER,                -- your total points when the game ended, once done
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
+  game_no     INTEGER,                -- the game's number, from the counter pitch_meta 'games', given at its first move
   PRIMARY KEY (player_id, day)
 );
 
@@ -75,7 +80,8 @@ CREATE TABLE IF NOT EXISTS pitch_practice (
   actions     TEXT NOT NULL,          -- JSON list of the human's actions across all its hands
   done        INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  game_no     INTEGER                 -- the game's number, from the same counter as daily games
 );
 CREATE INDEX IF NOT EXISTS pitch_practice_player ON pitch_practice (player_id, done);
 

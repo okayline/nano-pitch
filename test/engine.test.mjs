@@ -5,7 +5,7 @@ import { createHash, createHmac } from "node:crypto";
 import {
   HUMAN, cardCode, cardFromCode, gamePoints, deal, shuffledDeck, bidOptions, isForced, legalPlays, trickWinner,
   gameWinnerOf, scoreHand, estimate, bestSuit, botBid, botPlay, start, act, advance, view, suitOf,
-  TARGET, CROWD_MIN, crowdKey, leader, startGame, actGame, replayGame, viewGame,
+  TARGET, CROWD_MIN, crowdKey, leader, startGame, actGame, replayGame, viewGame, castOf, PFP_POOL,
 } from "../public/engine/pitch.js";
 import { dailySeed, seedHash } from "../engine/daily.js";
 
@@ -55,10 +55,10 @@ test("a forced bid is made for the dealer and they pitch", () => {
   assert.equal(s.turn, HUMAN); // the pitcher leads and the human is waiting
 });
 
-test("legal plays: follow or trump, anything if neither, the leader plays anything", () => {
+test("legal plays: follow or trump, anything if you can't follow, the leader plays anything", () => {
   const led = [{ seat: 0, card: cardFromCode("3S") }];
   assert.deepEqual(legalPlays(C("AS 5S 9H 2D"), led, H), C("AS 5S 9H")); // follow, or trump even when you could follow
-  assert.deepEqual(legalPlays(C("9H 2D 4H"), led, H), C("9H 4H")); // can't follow: must trump
+  assert.deepEqual(legalPlays(C("9H 2D 4H"), led, H), C("9H 2D 4H")); // can't follow: anything, trump or not
   assert.deepEqual(legalPlays(C("2D 3C"), led, H), C("2D 3C")); // neither: anything
   assert.deepEqual(legalPlays(C("AH 3S"), [{ seat: 0, card: cardFromCode("5H") }], H), C("AH")); // trump led
   assert.deepEqual(legalPlays(C("AH 3S"), [], H), C("AH 3S"));
@@ -130,6 +130,37 @@ test("bot bids: its estimate, only if it beats the bid and is at least 2", () =>
   assert.equal(botBid(two, 2), 0); // can't beat 2 with 2
   assert.equal(botBid(C("JH 5D 6D 7C 8C 9S"), 0), 0); // under 2: pass
   assert.equal(botBid(C("AH 2H JH TD TC KS"), 0), 4); // ace, low, jack and game
+});
+
+test("bot personalities: lagspike plays safe, mogger99 goes from 3 to 4, tiltproof trusts the crowd sooner", () => {
+  const three = C("AH 2H JH 5D 6C 7S"); // estimate 3
+  const two = C("AH JH 9H 2D 3C 4C");   // estimate 2
+  assert.deepEqual([null, 0, 1, 2].map((p) => botBid(three, 0, null, p)), [3, 2, 4, 3]);
+  assert.deepEqual([null, 0, 1, 2].map((p) => botBid(two, 0, null, p)), [2, 0, 2, 2]);   // mogger99 leans only from a count of 3
+  const mem = { [crowdKey(two, 0)]: { 0: 3 } };   // three players passed this type of hand
+  assert.equal(botBid(two, 0, mem, 0), 0);   // lagspike: under 5 players, its own count... which, being careful, is a pass
+  assert.equal(botBid(two, 0, mem, 1), 2);   // mogger99: own count
+  assert.equal(botBid(two, 0, mem, 2), 0);   // tiltproof: three players are enough to follow
+});
+
+test("the cast: each bot draws a personality (or none) and a name from the game's seed", () => {
+  assert.deepEqual(castOf("g1"), castOf("g1"));   // the same game always seats the same three
+  const seatings = new Set(), names = new Set(); let doubled = 0;
+  for (let i = 0; i < 60; i++) {
+    const c = castOf("seed-" + i);
+    assert.equal(c[0], null);
+    const ps = c.slice(1).map((x) => x.persona);
+    assert.ok(ps.every((p) => p === null || [0, 1, 2].includes(p)));
+    if (new Set(ps).size < 3) doubled++;   // two bots can share a personality
+    assert.equal(new Set(c.slice(1).map((x) => x.name)).size, 3);           // three different names
+    assert.equal(new Set(c.slice(1).map((x) => x.pfp)).size, 3);            // and three different profile pics
+    for (const x of c.slice(1)) { assert.ok(PFP_POOL.includes(x.pfp)); assert.match(x.name, /^[A-Z][A-Za-z]+ [A-Za-z]+$/); assert.ok(x.name.length <= 16); names.add(x.name); }
+    seatings.add(ps.join(","));
+  }
+  assert.ok(seatings.size > 5 && names.size > 10 && doubled > 0);   // seats, repeats and names vary from game to game
+  assert.ok(Array.from({ length: 400 }, (_, i) => castOf("n" + i)).some((c) => c.slice(1).every((x) => x.persona === null)));   // a table with no personality at all can happen
+  const g = startGame("g1");
+  assert.deepEqual(viewGame(g).cast, castOf("g1"));
 });
 
 test("the table's memory: bots follow the crowd once enough players held that type of hand", () => {

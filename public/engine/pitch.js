@@ -102,8 +102,9 @@ export function bidOptions(bids, dealer, seat) {
 export function legalPlays(hand, trick, trump) {
   if (trick.length === 0) return hand.slice();
   const led = suitOf(trick[0].card);
-  const legal = hand.filter((c) => suitOf(c) === led || suitOf(c) === trump);
-  return legal.length ? legal : hand.slice();
+  const follow = hand.filter((c) => suitOf(c) === led);
+  if (!follow.length) return hand.slice();   // can't follow: play anything
+  return hand.filter((c) => suitOf(c) === led || suitOf(c) === trump);   // otherwise follow, or trump
 }
 
 // Highest trump wins; with no trump, the highest card of the suit led.
@@ -185,16 +186,66 @@ export function crowdKey(hand, high) {
   return `${estimate(hand, suit)}-${hand.filter((c) => suitOf(c) === suit).length}-${high}`;
 }
 
+// The crowd's bids for this type of hand, if enough players have held it for a bot to follow them; else null.
+export function crowdSeen(hand, high, memory, persona = null) {
+  const seen = memory && memory[crowdKey(hand, high)];
+  return seen && [0, 2, 3, 4].reduce((n, b) => n + (seen[b] || 0), 0) >= (PERSONAS[persona]?.crowdMin ?? CROWD_MIN) ? seen : null;
+}
+
+// The three bot personalities, and what sets them apart in the bidding (only there). lean: how far its own count is shifted
+// (the snail plays it safe; the moai goes from 3 straight to 4); crowdMin: how many players must have held a type before it
+// follows the table (the ice cube trusts the crowd sooner).
+export const PERSONAS = [{ lean: -1 }, { lean: 1 }, { crowdMin: 3 }];   // a bot with none bids by its own count and the crowd
+
+// Names like aura-farm's: gen-z slang, two words ("Cracked Goblin"), the same lists (aura-farm src/names.js, copied), only the
+// pairs of 16 characters or fewer so a name fits a seat and the header on a phone.
+const ADJECTIVES = [
+  "Rizzed", "Unbothered", "Sigma", "Based", "Bussin", "Mewing", "Goated", "Lowkey", "Highkey", "Sus",
+  "Cracked", "Iconic", "Slay", "Ohio", "Skibidi", "Chill", "Cooked", "Glazed", "Aura", "Drippy",
+  "Yappy", "Extra", "Bougie", "Cozy", "Certified", "Rare", "Main", "Gyatt", "Lit", "Dank",
+  "Yeet", "Clutch",
+];
+const NOUNS = [
+  "Goblin", "NPC", "Rizzler", "Icon", "Legend", "Bestie", "Baddie", "Yapper", "Mogger", "Farmer",
+  "Opp", "Stan", "Himbo", "Girlboss", "Goat", "Gamer", "Lurker", "Ghost", "Noob", "Sidekick",
+  "Tryhard", "Enjoyer", "Ratio",
+];
+const PAIRS = ADJECTIVES.flatMap((a) => NOUNS.map((n) => `${a} ${n}`)).filter((s) => s.length <= 16);
+
+// The profile pics: the bots draw theirs from these each game, and a player picks theirs from them (the Worker checks it).
+export const PFP_POOL = ["😎", "🐸", "🦊", "🐙", "🦄", "🐲", "👻", "🤖", "👽", "🐱", "🐶", "🦉", "🐧", "🍄", "🌵", "🔥", "💎", "🎲", "🃏", "🍕", "🌮", "🧃", "🪩", "🛸", "🐌", "🗿", "🧊", "🙂"];
+
+// One name from a random source `r` (a function giving [0, 1)); the Worker uses it too, for players' names.
+export function gamerTag(r) {
+  return PAIRS[Math.floor(r() * PAIRS.length)];
+}
+
+// Who sits where in a game: seats 1 to 3 each draw a personality (or none) and a name, all from the game's seed, so the same
+// game always seats the same three and another game seats others. The draws are independent: a table can have two safe
+// bots, or no personality at all. The profile pic is its own draw, three different ones, whatever the personality.
+// cast[seat] = { persona (null: none), pfp, name }.
+export function castOf(seed) {
+  const r = rng(seed + ":cast"), names = [], pics = [];
+  const order = [0, 1, 2].map(() => [null, 0, 1, 2][Math.floor(r() * 4)]);
+  while (names.length < 3) {
+    const name = gamerTag(r);
+    if (!names.includes(name)) names.push(name);
+  }
+  while (pics.length < 3) { const e = PFP_POOL[Math.floor(r() * PFP_POOL.length)]; if (!pics.includes(e)) pics.push(e); }
+  return [null, ...order.map((persona, i) => ({ persona, pfp: pics[i], name: names[i] }))];
+}
+
 // 0 to pass, or a bid that beats `high`: the crowd's most common bid for this type of hand if it has enough players
 // (a tie goes to the lower bid), else the bot's own count.
-export function botBid(hand, high, memory = null) {
-  const seen = memory && memory[crowdKey(hand, high)];
-  if (seen && [0, 2, 3, 4].reduce((n, b) => n + (seen[b] || 0), 0) >= CROWD_MIN) {
+export function botBid(hand, high, memory = null, persona = null) {
+  const seen = crowdSeen(hand, high, memory, persona);
+  if (seen) {
     let best = 0;
     for (const b of [2, 3, 4]) if ((seen[b] || 0) > (seen[best] || 0)) best = b;
     return best === 0 || best > high ? best : 0;
   }
-  const want = estimate(hand, bestSuit(hand));
+  const est = estimate(hand, bestSuit(hand)), lean = PERSONAS[persona]?.lean ?? 0;
+  const want = Math.min(4, est + (lean > 0 && est < 3 ? 0 : lean));   // bidding over only starts at a count of 3: mogger99 bids 2, or goes straight to 4
   return want >= 2 && want > high ? want : 0;
 }
 
@@ -238,17 +289,17 @@ export function botPlay(v) {
 // state = { seed, dealer, dealt, hands, bids, phase: "bid" | "play" | "done", turn, pitcher, bid, trump, trick, tricks, result }
 // Plain JSON, so the Worker can keep it. `start` and `act` hand back a state waiting on the human (or finished).
 
-export function start(seed, dealerSeat, memory = null) {
+export function start(seed, dealerSeat, memory = null, cast = null) {
   const dealt = deal(seed), hands = dealt.hands, dealer = dealerSeat ?? dealt.dealer;
   return advance({
-    seed, dealer, memory, dealt: hands.map((h) => h.slice()), hands,
+    seed, dealer, memory, cast, dealt: hands.map((h) => h.slice()), hands,
     bids: [], phase: "bid", turn: (dealer + 1) % 4,
     pitcher: null, bid: 0, trump: null, trick: [], tricks: [], result: null,
   });
 }
 
-function pushBid(s, seat, bid, forced = false) {
-  s.bids.push(forced ? { seat, bid, forced: true } : { seat, bid });
+function pushBid(s, seat, bid, forced = false, crowd = false) {
+  s.bids.push(forced ? { seat, bid, forced: true } : crowd ? { seat, bid, crowd: true } : { seat, bid });   // crowd: the bot bid what the table remembered
   s.turn = (s.turn + 1) % 4;
 }
 
@@ -286,8 +337,8 @@ export function advance(s) {
       if (s.bids.length === 4) { settleBids(s); continue; }
       if (isForced(s.bids, s.dealer, s.turn)) { pushBid(s, s.turn, 2, true); continue; }
       if (s.turn === HUMAN) return s;
-      const high = Math.max(0, ...s.bids.map((b) => b.bid));
-      pushBid(s, s.turn, botBid(s.hands[s.turn], high, s.memory));
+      const high = Math.max(0, ...s.bids.map((b) => b.bid)), persona = s.cast?.[s.turn]?.persona ?? null;
+      pushBid(s, s.turn, botBid(s.hands[s.turn], high, s.memory, persona), false, !!crowdSeen(s.hands[s.turn], high, s.memory, persona));
       continue;
     }
     if (s.turn === HUMAN) return s;
@@ -363,7 +414,8 @@ function summary(s, no) {
 
 // `memory` is the table's memory of bids as it stood when the day began; the bots in every hand of the game use it.
 export function startGame(seed, memory = null) {
-  return { seed, no: 0, totals: [0, 0, 0, 0], history: [], memory, hand: start(seed, dealerOf(seed, 0), memory), over: false };
+  const cast = castOf(seed);
+  return { seed, cast, no: 0, totals: [0, 0, 0, 0], history: [], memory, hand: start(seed, dealerOf(seed, 0), memory, cast), over: false };
 }
 
 // The human's move in the game. Returns a new game; throws if illegal or the game is over.
@@ -376,7 +428,7 @@ export function actGame(game, action) {
   g.totals = g.totals.map((t, seat) => t + g.hand.result.final[seat]);
   if (leader(g.totals) !== null) { g.over = true; return g; }
   g.no++;
-  g.hand = start(handSeed(g.seed, g.no), dealerOf(g.seed, g.no), g.memory);
+  g.hand = start(handSeed(g.seed, g.no), dealerOf(g.seed, g.no), g.memory, g.cast);
   return g;
 }
 
@@ -390,7 +442,7 @@ export function replayGame(seed, actions, memory = null) {
 // What the human's screen may see of the game: the current hand, the running totals and the finished hands.
 export function viewGame(g) {
   return {
-    ...view(g.hand), no: g.no, totals: g.totals, history: g.history, over: g.over, target: TARGET,
+    ...view(g.hand), cast: g.cast, no: g.no, totals: g.totals, history: g.history, over: g.over, target: TARGET,
     place: g.over ? 1 + g.totals.filter((t) => t > g.totals[HUMAN]).length : null,
   };
 }

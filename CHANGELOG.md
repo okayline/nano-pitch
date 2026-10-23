@@ -4,6 +4,18 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.8 — "New Faces"
+**Thu Oct 22, 2026**
+
+- Nano Pitch: the game's name on the page is NANO PITCH now. All text is bold. The header reads "date · Game #N · Hand N" (the Game # is a counter shared by every game, given at its first move, and written into the game's sealed ledger record).
+- The bots: each game seats three bots with random gen-z names (aura-farm's lists) and random profile pics. Each bot draws a personality or none: safe (bids a point under its count), bold (goes from 3 straight to 4) or follows the crowd (after 3 players, not 5), so a table can have two safe bots or no personality at all. They sometimes post just an emoji after a move. Removed: the fixed lagspike, mogger99 and tiltproof, the same three in the same seats every day.
+- The rule: when you can't follow the suit led, any card is legal. Removed: being forced to play trump.
+- Games any time: New game (in the header) starts a practice game whenever you like. Removed: "Finish today's game first."
+- Players: a random name when you first open Account (new name any time) and a profile pic you pick by tapping it there. Account shows "name's account", whether you're logged in, and a Log out button; the Account and Ledger pages link to each other. Database: migration 005_names.sql (names, profile pics, game numbers). Removed: the small "Log out of this browser" link, and "Back to the game" on the Ledger page.
+- The table: its height no longer jumps; the hand result opens inside the table's place under the scoreboard; each score has its bar below it, and a negative score's bar runs left out of its frame; the seat to move stays bright while the others dim; Pass is preselected and the other bids light up under the mouse; the bid chip reads "bid 2 in ♦"; chat shows the last 5 moves, one row each, with profile pics; a little less waiting after East plays and after a trick. Removed: the Tricks chip, the "Hand N / first to 11" line, the fire icon on the bid chip, the always-lit 4, and the "pass" labels left under every seat after bidding.
+
+---
+
 ## v0.7.1
 **Thu Oct 22, 2026**
 

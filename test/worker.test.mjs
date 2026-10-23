@@ -152,17 +152,17 @@ test("a game still being played carries on across hands and reloads", async () =
   assert.deepEqual(reload.view.totals, t.view.totals);
 });
 
-test("practice games: refused until today's game is sealed, then random deals sealed as 'practice', outside the field", async () => {
+test("practice games: start any time, random deals sealed as 'practice', outside the field", async () => {
   const { call, raw } = setup();
   const t = await call("/api/today");
   const first = t.view.phase === "bid" ? { type: "bid", bid: t.view.bidOptions[0] } : { type: "play", card: t.view.legal[0] };
   const r0 = await call("/api/act", { body: { day: t.day, n: 0, action: first } });
-  assert.equal((await call("/api/practice/new", { body: {}, cookie: r0.cookie })).status, 409);   // today's game isn't done
   assert.equal((await call("/api/practice", { cookie: r0.cookie })).practice, null);
+  let p = await call("/api/practice/new", { body: {}, cookie: r0.cookie });   // no gate: a practice game can start while today's is still open
+  assert.equal(p.status, 200, p.error);
+  assert.equal((await call("/api/today", { cookie: r0.cookie })).n, r0.n);   // and today's game is untouched
   const { cookie } = await playThrough(call, r0.cookie);
   const fieldBefore = raw.prepare("SELECT * FROM pitch_days").get();
-  let p = await call("/api/practice/new", { body: {}, cookie });
-  assert.equal(p.status, 200, p.error);
   const id = p.practice;
   const seed = raw.prepare("SELECT seed FROM pitch_practice WHERE id = ?").get(id).seed;
   assert.match(seed, /^[0-9a-f]{64}$/);
@@ -180,6 +180,11 @@ test("practice games: refused until today's game is sealed, then random deals se
   assert.deepEqual(rec.totals, p.view.totals);
   assert.equal(rec.hands, p.view.history.length);
   assert.equal(p.hash, entry.hash);
+  assert.equal(rec.game, p.game);   // the game's number is in its sealed record
+  const dayRec = JSON.parse(raw.prepare("SELECT record FROM pitch_ledger WHERE kind = 'game'").get().record);
+  const reload = await call("/api/today", { cookie });
+  assert.equal(reload.game, dayRec.game);   // and a reload of the finished daily game says the same number
+  assert.deepEqual([r0.game, p.game], [1, 2]);   // one counter for every game, numbered as each begins (the daily's first move, then the practice game)
   assert.equal(raw.prepare("SELECT done FROM pitch_practice WHERE id = ?").get(id).done, 1);
   assert.deepEqual(raw.prepare("SELECT * FROM pitch_days").get(), fieldBefore);   // the field is the daily game only
   assert.equal(p.field, null);
@@ -312,6 +317,27 @@ test("every table, index and trigger is named pitch_, and the code only touches 
     assert.ok(used.length > 0, f);
     for (const n of used) assert.match(n, /^pitch_/, `${f}: ${n}`);
   }
+});
+
+test("usernames: a random name when the account is looked at, rerolled on request, unique ignoring case", async () => {
+  const { call, raw } = setup();
+  const t = await call("/api/today");
+  const r0 = await call("/api/act", { body: { day: t.day, n: 0, action: t.view.phase === "bid" ? { type: "bid", bid: t.view.bidOptions[0] } : { type: "play", card: t.view.legal[0] } } });
+  const a = await call("/api/account", { cookie: r0.cookie });
+  assert.match(a.name, /^[A-Z][A-Za-z]+ [A-Za-z]+$/);
+  assert.equal((await call("/api/account", { cookie: r0.cookie })).name, a.name);   // it stays until rerolled
+  assert.equal(raw.prepare("SELECT name_key FROM pitch_players WHERE id = ?").get(a.id).name_key, a.name.toLowerCase());
+  const again = await call("/api/name", { body: {}, cookie: r0.cookie });
+  assert.equal(again.status, 200);
+  assert.notEqual(again.name, a.name);
+  assert.equal((await call("/api/account", { cookie: r0.cookie })).name, again.name);
+  assert.equal((await call("/api/name", { body: {} })).status, 401);   // no player, no name
+  assert.equal((await call("/api/account", { cookie: r0.cookie })).pfp, null);   // no pic chosen yet: the page uses its default
+  assert.equal((await call("/api/pfp", { body: { pfp: "🐸" }, cookie: r0.cookie })).pfp, "🐸");
+  assert.equal((await call("/api/account", { cookie: r0.cookie })).pfp, "🐸");
+  assert.equal((await call("/api/pfp", { body: { pfp: "<b>" }, cookie: r0.cookie })).status, 400);   // only the pool's emoji
+  assert.equal((await call("/api/pfp", { body: { pfp: "🐸" } })).status, 401);
+  assert.throws(() => raw.prepare("INSERT INTO pitch_players (token_hash, created_at, name, name_key) VALUES ('x', 1, 'A', ?)").run(again.name.toLowerCase()));   // taken
 });
 
 test("the migrations build the same tables as schema.sql", () => {
