@@ -169,13 +169,13 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 
 /* the result screen's grid: a row a seat, a column a round; the bubbles keep their size and the rounds scroll sideways, the name and total stay put */
 .rscroll { overflow-x: auto; padding-bottom: 16px; scrollbar-width: thin; }   /* room under the last row, so the scroll bar never sits over it */
-.rgrid { display: grid; grid-template-columns: 36px 48px repeat(var(--rounds), 44px); gap: 6px 0; align-items: center; width: max-content; }
+.rgrid { display: grid; grid-template-columns: 34px 30px repeat(var(--rounds), 44px); gap: 6px 0; align-items: center; width: max-content; }   /* the first two columns are narrow so six rounds fit on a phone */
 .rgrid > span { white-space: nowrap; }
 .rgrid .hd { text-align: center; font-size: 11px; color: var(--dim); }
 .rgrid .chip { justify-content: center; padding: 5px 0; width: 40px; margin: 0 2px; font-size: 13px; }
 .rgrid .c0, .rgrid .c1 { position: sticky; z-index: 1; background: var(--panel); align-self: stretch; display: flex; align-items: center; }   /* the whole height of the row, so nothing shows above or below them */
 .rgrid .c0 { left: 0; font-size: 20px; justify-content: center; }
-.rgrid .c1 { left: 36px; justify-content: center; padding-right: 16px; box-sizing: border-box; box-shadow: 6px 0 6px -4px rgba(0,0,0,.6); }   /* a soft edge where the rounds slide under */
+.rgrid .c1 { left: 34px; justify-content: center; box-shadow: 6px 0 6px -4px rgba(0,0,0,.6); }   /* a soft edge where the rounds slide under */
 .rgrid .tot { font-family: var(--meme); font-size: 20px; }
 .rgrid .tot.win { text-shadow: 0 0 10px var(--b); }
 .rgrid .you { color: var(--ink); }

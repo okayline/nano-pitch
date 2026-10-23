@@ -124,8 +124,31 @@ function chatOn() {
   afterN = 0;
   const mine = ++afterRun;
   if (!pending()) return;
-  for (let n = 1; n <= 4; n++) setTimeout(() => { if (afterRun === mine && !rp && pending()) { afterN = n; liveChat = true; draw(); liveChat = false; } }, 1000 * n + ((n * 370) % 500));
+  for (let n = 1; n <= 64; n++) setTimeout(() => { if (afterRun === mine && !rp && pending()) { afterN = n; liveChat = true; draw(); liveChat = false; } }, n <= 4 ? 1000 * n + ((n * 370) % 500) : 4000 + (n - 4) * 3500 + ((n * 370) % 900));
 }
+
+// While it is your turn the chat goes on too: a viewer says something every few seconds until you move. `idleBatches` holds, for each
+// hand, one batch for each time the turn came to you: { k: how many moves had been made, n: how many lines were said }.
+const idleBatches = new Map();
+const idleKey = (v) => `${T.game}|${T.daily ? "d" : "n"}|${v.no}`;
+const moveCount = (v) => v.bids.length + v.tricks.reduce((n, t) => n + t.plays.length, 0) + v.trick.length;
+const IDLE = {
+  bid: ["come on", "pass?", "go 4 coward", "bid bid bid", "tick tock", "👀", "hmm", "🍿", "no pressure", "waiting lol"],
+  play: ["come on", "play it", "ur turn", "tick tock", "big brain time", "that's the one", "👀", "🍿", "no pressure", "waiting lol", "trump it", "hmm"],
+};
+function idleStep() {
+  if (mode !== "game" || !T || busy || rp || pending() || T.view.over || T.view.turn !== HUMAN) return;
+  const key = idleKey(T.view), k = moveCount(T.view), list = idleBatches.get(key) || [];
+  let b = list[list.length - 1];
+  if (!b || b.k !== k) { b = { k, n: 0 }; list.push(b); idleBatches.set(key, list); }
+  if (b.n >= 400) return;
+  b.n++; liveChat = true;
+  const feed = document.querySelector(".feed");
+  if (feed) { feed.outerHTML = feedHtml(T.view); chat(); } else draw();   // only the chat is redrawn, so a click on a card is never lost to it
+  liveChat = false;
+}
+const idleTick = () => setTimeout(() => { idleStep(); idleTick(); }, 3200 + Math.random() * 3000);
+idleTick();
 
 // Plays hand h back from move `from` to its end, then calls `then`. The player's own move shows at once.
 function replay(h, base, from, tmpl, then) {
@@ -220,14 +243,32 @@ function moveLines(v) {
     } else if (roll(13) < 70) E.push([chatter(E.length), chime(kind + "_other", E.length), last, 2, true, ++post]);
     if (roll(14) < 60) E.push([chatter(E.length), chime("then", E.length), last, 2, true, ++post]);
     if (roll(15) < 35) E.push([chatter(E.length), chime("then", E.length), last, 2, true, ++post]);
+    if (v.after !== Infinity) for (let n = 0; n < 60; n++) E.push([chatter(E.length), chime("then", E.length), last, 2, true, ++post]);   // and it goes on while the card is up (chatOn); the rounds before this one only keep what was said
+  }
+  // While it is your turn the chat never goes quiet: the viewers keep talking (idleStep adds a line every few seconds, one batch for each
+  // time the turn came to you). A batch stays where it was said, after the move it waited on, so it doesn't jump when you move.
+  for (const b of idleBatches.get(idleKey(v)) || []) {
+    if (moveCount(v) < b.k) continue;
+    const pool = b.k < 4 ? IDLE.bid : IDLE.play, at = E.reduce((m, e, i) => (e[2] <= b.k - 1 && !e[6] ? i : m), -1);
+    const mix = (a) => { let h = Math.imul(a ^ 0x9e3779b9, 2654435761); h ^= h >>> 15; h = Math.imul(h, 2246822519); h ^= h >>> 13; return h >>> 0; };   // the same numbers every draw, spread well
+    let prev = -1;
+    const lines = Array.from({ length: b.n }, (_, j) => {
+      const r = (b.k + 1) * 1000 + j, who = mix(r) % VIEWERS;
+      let w = mix(r + 7919) % pool.length;
+      if (w === prev) w = (w + 1) % pool.length;   // never the same words twice in a row
+      prev = w;
+      return [VIEWER + who, pool[w], b.k - 1, 2, true, 0, true];
+    });
+    E.splice(at + 1, 0, ...lines);
   }
   // Now and then a bot posts just an emoji after its move. Which moves and which emoji come from the move's place in the hand, so a replay or reload chats the same.
   const EMOTE = [["😴", "🥱", "💤", "🫠"], ["🗿", "😐", "💀", "🔥"], ["😤", "🥶", "🤬", "🧊"], ["🙂", "😶", "👍", "🤷"]];   // by personality: safe, bold, crowd, none
   const mood = (s, i) => { const h = [...`${v.no}|${i}|${s}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7); return h % 6 === 0 ? EMOTE[v.cast[s].persona ?? 3][(h >> 4) % 4] : null; };
   return E.flatMap(([s, text, ev, late, played, post], i) => {
+    const oi = E.slice(0, i).filter((x) => !x[6]).length;   // the entry's place without the idle lines, so a bot's emoji stays on the same moves
     if (s === HUMAN && !played) return [];   // your cards are in the chat; your bids and the lines after them aren't
     const held = ev === v.hold, shown = (!held || late < v.stage) && (!post || (v.after ?? 0) >= post);   // while a move is the newest on a replaying table, its lines wait for their stage
-    const e = s !== HUMAN && !late && (!held || v.stage > 1) && mood(s, i);   // a bot's own emoji follows its move, not the lines that follow a trick
+    const e = s !== HUMAN && !late && (!held || v.stage > 1) && mood(s, oi);   // a bot's own emoji follows its move, not the lines that follow a trick
     return [...(shown ? [`${nm(s)}${played ? ":" : ""} ${text}`] : []), ...(shown && e ? [`${nm(s)}: ${e}`] : [])];
   });
 }
