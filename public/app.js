@@ -301,8 +301,21 @@ function draw() {
   $app.innerHTML = { loading: loadingScreen, game: gameScreen, account: accountScreen }[mode]() + `<div class="ver">${esc(VERSION)}</div>`;
   const box = document.getElementById("codein");
   if (box && typed != null) box.value = typed;
+  fitGrid();
   chat();
 }
+
+// The rounds grid shows whole rounds only: its window is as wide as the two left columns plus as many whole round columns as fit
+// (rounds snap into place when you scroll), so no round is ever cut in half at the right edge. With room for all of them it is left alone.
+function fitGrid() {
+  const s = document.querySelector(".rscroll");
+  if (!s) return;
+  s.style.maxWidth = "";
+  const rounds = Number(s.firstElementChild.style.getPropertyValue("--rounds")), room = Math.floor((s.clientWidth - GRID_LEFT) / GRID_COL);
+  if (rounds > room && room > 0) s.style.maxWidth = GRID_LEFT + room * GRID_COL + "px";
+}
+const GRID_LEFT = 64, GRID_COL = 44;   // the width of the grid's two left columns, and of each round's column (style.css, .rgrid)
+addEventListener("resize", () => fitGrid());
 
 function header() {
   const sub = T ? `${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · ${gameLabel()} · ${T.view.over ? "Final" : "Round " + ((!rp && pending() ? T.view.history[seen].no : T.view.no) + 1)}` : "";   // today's date on this device
