@@ -15,6 +15,7 @@ Newest first. Times are Hawaii time (HST).
 - Chat: spade and club cards ("K♠") are blue. Removed: the plain white for them.
 - Round card: the chat keeps going while it is up (the bidder and the viewers say a few more things, one at a time, above the card), and "This round" is a strip of four boxes, name over score, you outlined. Removed: the one-line "This round" row, and the Bid row (the line under the title already says it).
 - Ledger: each finished game shows the player's name (their random one, as it is now; "Player N" if they have none), the four totals with the table's names best first, the game's field so far (players finished, % who beat the table, average rounds) and the Daily game's day. Removed: the old fixed table names (lagspike...) on those rows, and the bare "Player N" with only totals.
+- Result screen: everyone but the winner goes black and white on the scoreboard, and the winner's name under the headline is bigger. Removed: the colour on the losers' cards, and the smaller name.
 - Registry: each checkpoint now carries the finished game's public facts (kind, number, day, rounds, place, score, bids, trumps). Removed: the bare checkpoint with no facts.
 
 ---

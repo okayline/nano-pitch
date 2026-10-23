@@ -272,11 +272,11 @@ function header() {
 function loadingScreen() { return header() + `<div class="panel"><p class="hint">${esc(msg || "Dealing…")}</p></div>`; }
 
 // You and the table's three hands, with the running totals and, under each score, how close that hand is to 11.
-function scoreboard(v) {
+function scoreboard(v, end = false) {   // `end`: the game's result is showing, so everyone but the winner goes black and white
   const top = Math.max(...v.totals);
   const cell = (seat) => {
     const t = v.totals[seat], pct = Math.min(t < 0 ? 120 : 100, (100 * Math.abs(t)) / v.target);   // below zero the bar runs left, out of its frame
-    return `<div class="score${seat === HUMAN ? " you" : ""}${v.totals[seat] === top && top > 0 ? " lead" : ""}">
+    return `<div class="score${seat === HUMAN ? " you" : ""}${v.totals[seat] === top && top > 0 ? " lead" : ""}${end && v.totals[seat] !== top ? " lost" : ""}">
       <div class="top"><div class="em">${pfp(seat)}</div><div class="pt">${t}</div></div><div class="nm">${seat === HUMAN && myName ? `<span class="tag">${esc(myName)}</span>` : tag(seat)}</div><div class="bar${t < 0 ? " neg" : ""}"><i style="width:${pct.toFixed(1)}%"></i></div></div>`;
   };
   return `<div class="panel"><div class="scores">${[0, 1, 2, 3].map(cell).join("")}</div></div>`;
@@ -375,7 +375,7 @@ function finalScreen() {
   const v = T.view, f = T.field, place = v.place;
   const winner = v.totals.indexOf(Math.max(...v.totals));
   const headline = `${esc(nameOf(winner).toUpperCase())} WINS`;
-  const sub = place === 1 ? `first to ${v.target} in ${v.history.length} rounds` : `${tag(winner)} got there first · you placed ${ORD[place]}`;
+  const sub = place === 1 ? `first to ${v.target} in ${v.history.length} rounds` : `<span class="winname">${tag(winner)}</span> got there first · you placed ${ORD[place]}`;
   const finals = v.history.map((h) => { const n = h.final[HUMAN]; return `<span class="chip ${n > 0 ? "up" : n < 0 ? "down" : ""}">${signed(n)}</span>`; }).join("");
   let field = "";
   if (f && f.games > 0) {
@@ -393,7 +393,7 @@ function finalScreen() {
   const buttons = `<button class="go" data-k="play">${T.next && T.next.kind === "daily" ? "Play today's Daily game" : "Play"}</button>`;
   return header() + `
     <div class="panel"><div class="big">${headline}</div><p class="hint" style="margin:6px 0 0">${sub}</p></div>
-    ${scoreboard(v)}
+    ${scoreboard(v, true)}
     <div class="panel"><div class="small" style="margin-bottom:8px">Your score each round</div><div class="hands">${finals}</div></div>
     ${field}
     ${memory}
