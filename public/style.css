@@ -173,14 +173,19 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 
 
 /* the result screen's grid: a row a seat, a column a round; the bubbles keep their size and the rounds scroll sideways, the name and total stay put */
-.rscroll { overflow-x: auto; padding-bottom: 16px; scrollbar-width: thin; }   /* room under the last row, so the scroll bar never sits over it */
-.rgrid { display: grid; grid-template-columns: 34px 30px repeat(var(--rounds), 44px); gap: 6px 0; align-items: center; width: max-content; }   /* the first two columns are narrow so six rounds fit on a phone */
+.rwrap { display: flex; align-items: flex-start; }   /* the pic and total stay put on the left; only the rounds scroll, so the bar sits under the rounds in every browser */
+.rleft { display: grid; grid-template-columns: 34px 30px; grid-template-rows: 16px repeat(4, 30px); gap: 6px 0; align-items: center; flex: none; position: relative; z-index: 1; box-shadow: 6px 0 6px -4px rgba(0,0,0,.6); background: var(--panel); }   /* the first two columns are narrow so six rounds fit on a phone */
+.rleft > span { white-space: nowrap; display: flex; align-items: center; justify-content: center; }
+.rleft .c0 { font-size: 20px; }
+.rscroll { overflow-x: auto; min-width: 0; padding-bottom: 16px; }
+@supports not selector(::-webkit-scrollbar) { .rscroll { scrollbar-width: thin; scrollbar-color: var(--dim) transparent; } }   /* Firefox */
+.rscroll::-webkit-scrollbar { height: 10px; }   /* Chrome and Safari: a slim lavender pill with no arrows */
+.rscroll::-webkit-scrollbar-track { background: transparent; }
+.rscroll::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 5px; }   /* room under the last row, so the scroll bar never sits over it */
+.rgrid { display: grid; grid-template-columns: repeat(var(--rounds), 44px); grid-template-rows: 16px repeat(4, 30px); gap: 6px 0; align-items: center; width: max-content; }
 .rgrid > span { white-space: nowrap; }
-.rgrid .hd { text-align: center; font-size: 11px; color: var(--dim); }
+.rgrid .hd, .rleft .hd { text-align: center; font-size: 11px; color: var(--dim); }
 .rgrid .chip { justify-content: center; padding: 5px 0; width: 40px; margin: 0 2px; font-size: 13px; }
-.rgrid .c0, .rgrid .c1 { position: sticky; z-index: 1; background: var(--panel); align-self: stretch; display: flex; align-items: center; }   /* the whole height of the row, so nothing shows above or below them */
-.rgrid .c0 { left: 0; font-size: 20px; justify-content: center; }
-.rgrid .c1 { left: 34px; justify-content: center; box-shadow: 6px 0 6px -4px rgba(0,0,0,.6); }   /* a soft edge where the rounds slide under */
-.rgrid .tot { font-family: var(--meme); font-size: 20px; }
-.rgrid .tot.win { text-shadow: 0 0 10px var(--b); }
-.rgrid .you { color: var(--ink); }
+.rleft .tot { font-family: var(--meme); font-size: 20px; padding-right: 8px; }   /* the totals sit a few pixels further left */
+.rleft .tot.win { text-shadow: 0 0 10px var(--b); }
+.rleft .you { color: var(--ink); }

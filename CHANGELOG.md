@@ -4,6 +4,26 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.12.4
+**Fri Oct 23, 2026**
+
+- Rounds scroll bar look: a slim lavender pill with no arrows or white track, in Chrome, Safari and Firefox. Added: the scroll bar colors. Removed: the browser's default thin bar look on this grid.
+
+## v0.12.3
+**Fri Oct 23, 2026**
+
+- Rounds grid in Firefox: the scroll bar under the rounds now starts under round 1 in Firefox too, not only in Chrome and Safari. The pic and the total are now their own block on the left and only the rounds scroll, instead of the left columns sticking over the scrolling grid. Added: nothing. Removed: the sticky left columns and the Chrome-only scroll bar styling that v0.12.2 used.
+
+## v0.12.2
+**Fri Oct 23, 2026**
+
+- Rounds grid: the scroll bar under it now starts under round 1 instead of running under the pic and the total too, and the totals sit a few pixels further left. Added: nothing. Removed: the bar's full-width track.
+
+## v0.12.1
+**Fri Oct 23, 2026**
+
+- Card clicks that did nothing: a card or a bid now plays the moment the mouse button goes down (or the finger touches), not when it comes back up. The chat and the replay rebuild every card on the table, and a rebuild between the press and the release threw the click away, so the card looked stuck until you clicked again. The click that follows a press is ignored so a move can't play twice. Added: nothing. Removed: nothing (a click alone, such as from the keyboard, still plays).
+
 ## v0.12
 **Fri Oct 23, 2026**
 

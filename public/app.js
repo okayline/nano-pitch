@@ -321,8 +321,8 @@ function fitGrid() {
   const s = document.querySelector(".rscroll");
   if (!s) return;
   s.style.maxWidth = "";
-  const rounds = Number(s.firstElementChild.style.getPropertyValue("--rounds")), room = Math.floor((s.clientWidth - GRID_LEFT) / GRID_COL);
-  if (rounds > room && room > 0) s.style.maxWidth = GRID_LEFT + room * GRID_COL + "px";
+  const rounds = Number(s.firstElementChild.style.getPropertyValue("--rounds")), room = Math.floor((s.parentElement.clientWidth - GRID_LEFT) / GRID_COL);
+  if (rounds > room && room > 0) s.style.maxWidth = room * GRID_COL + "px";
 }
 const GRID_LEFT = 64, GRID_COL = 44;   // the width of the grid's two left columns, and of each round's column (style.css, .rgrid)
 addEventListener("resize", () => fitGrid());
@@ -477,11 +477,11 @@ function finalScreen() {
   // Every round for every seat: a row each (the seat's emoji, total, then one bubble a round). The bubbles keep one size and the rounds scroll
   // sideways when there are more than fit; the emoji and the total stay put on the left.
   const bub = (n) => `<span class="chip ${n > 0 ? "up" : n < 0 ? "down" : ""}">${signed(n)}</span>`;
-  const grid = `<div class="rgrid" style="--rounds:${v.history.length}">
-      <span class="c0 hd"></span><span class="c1 hd"></span>${v.history.map((h) => `<span class="hd">${h.no + 1}</span>`).join("")}
-      ${[0, 1, 2, 3].map((s) => `<span class="c0 nm${s === HUMAN ? " you" : ""}" title="${esc(nameOf(s))}">${pfp(s)}</span>
-        <span class="c1 tot${s === HUMAN ? " you" : ""}${v.totals[s] === Math.max(...v.totals) ? " win" : ""}">${v.totals[s]}</span>${v.history.map((h) => bub(h.final[s])).join("")}`).join("")}
-    </div>`;
+  const grid = `<div class="rwrap"><div class="rleft">
+      <span class="c0 hd"></span><span class="c1 hd"></span>${[0, 1, 2, 3].map((s) => `<span class="c0 nm${s === HUMAN ? " you" : ""}" title="${esc(nameOf(s))}">${pfp(s)}</span><span class="c1 tot${s === HUMAN ? " you" : ""}${v.totals[s] === Math.max(...v.totals) ? " win" : ""}">${v.totals[s]}</span>`).join("")}
+    </div><div class="rscroll"><div class="rgrid" style="--rounds:${v.history.length}">
+      ${v.history.map((h) => `<span class="hd">${h.no + 1}</span>`).join("")}${[0, 1, 2, 3].map((s) => v.history.map((h) => bub(h.final[s])).join("")).join("")}
+    </div></div></div>`;
   let field = "";
   if (f && f.games > 0) {
     const won = Math.round((100 * f.places[0]) / f.games);
@@ -499,7 +499,7 @@ function finalScreen() {
   return header() + `
     <div class="panel"><p class="hint" style="margin:0">${sub}</p></div>
     ${scoreboard(v, true)}
-    <div class="panel"><div class="rscroll">${grid}</div></div>
+    <div class="panel">${grid}</div>
     ${field}
     ${memory}
     ${msg ? `<p class="msg">${esc(msg)}</p>` : ""}
@@ -677,9 +677,20 @@ $app.addEventListener("mouseover", (e) => {
 
 $app.addEventListener("mouseleave", () => { hotCard = ""; for (const x of document.querySelectorAll(".hand .pc.hot")) x.classList.remove("hot"); });
 
+// A card or a bid plays when the button goes down, not when it comes back up: a redraw between the two (the chat and the replay
+// rebuild every card) would throw the click away. The click that follows is ignored so it can't play twice.
+let downAt = 0;
+$app.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  const el = e.target.closest(".hand .pc.ok, .bids button:not(:disabled)");
+  if (!el || !el.dataset.k) return;
+  downAt = Date.now();
+  press(el.dataset.k);
+});
+
 $app.addEventListener("click", (e) => {
   const el = e.target.closest("[data-k]");
-  if (el && !el.disabled) press(el.dataset.k);
+  if (el && !el.disabled && !(Date.now() - downAt < 700 && /^[bc]\d/.test(el.dataset.k))) press(el.dataset.k);
 });
 
 document.addEventListener("keydown", (e) => {
