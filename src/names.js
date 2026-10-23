@@ -1,6 +1,7 @@
 // Players' names: random gen-z two-word names like "Cracked Goblin" (the same generator as the bots', from aura-farm's lists). A player gets one the
 // first time their account is looked at, and can reroll it any time (POST /api/name); names can't be typed. They are unique
-// ignoring case. The ledger never carries a name, only the player number.
+// ignoring case. The sealed ledger records never carry a name (only the player number); the ledger page shows a player's current name beside
+// each finished game.
 import { gamerTag } from "../public/engine/pitch.js";
 
 // Give this player a name nobody has, if they have none (or a different one, with reroll). Returns the name.
