@@ -18,7 +18,7 @@ Newest first. Times are Hawaii time (HST).
 - Result screen: everyone but the winner goes black and white on the scoreboard, and the winner's name under the headline is bigger. Removed: the colour on the losers' cards, and the smaller name.
 - Result screen: "Your score each round" is now a grid of all four seats, a row each with the total, one bubble a round; the bubbles keep their size and it scrolls sideways when the game is long. Removed: the row of only your scores. The left column is just each seat's emoji (no name), and the grid has no "Each round" or "Total" words over it.
 - Result screen: the winner's name under the headline sits on its own line, then "got there first · you placed 2nd" under it (they ran together and wrapped). Removed: the name sharing a line with that text.
-- Result screen: the winner's name is no longer repeated under the headline (it reads "got there first · you placed 2nd"). Removed: the repeated name line.
+- Result screen: just two centred lines, the winner's name (big) and "got there first · you placed 2nd" (or "you won · first to 11 in 8 rounds"). Removed: the white glowing "... WINS" headline above them.
 - Registry: each checkpoint now carries the finished game's public facts (kind, number, day, rounds, place, score, bids, trumps). Removed: the bare checkpoint with no facts.
 
 ---

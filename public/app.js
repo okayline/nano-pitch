@@ -374,8 +374,9 @@ const gameLabel = () => (T.daily ? "Daily game #" : "Game #") + T.game;
 function finalScreen() {
   const v = T.view, f = T.field, place = v.place;
   const winner = v.totals.indexOf(Math.max(...v.totals));
-  const headline = `${esc(nameOf(winner).toUpperCase())} WINS`;
-  const sub = place === 1 ? `first to ${v.target} in ${v.history.length} rounds` : `got there first · you placed ${ORD[place]}`;
+  // Two centred lines: the winner's name, big, and what happened under it. (No headline above them.)
+  const winTag = winner === HUMAN ? `<span class="tag">${esc(myName || "You")}</span>` : tag(winner);
+  const sub = `<span class="winname">${winTag}</span>` + (place === 1 ? `you won · first to ${v.target} in ${v.history.length} rounds` : `got there first · you placed ${ORD[place]}`);
   // Every round for every seat: a row each (the seat's emoji, total, then one bubble a round). The bubbles keep one size and the rounds scroll
   // sideways when there are more than fit; the emoji and the total stay put on the left.
   const bub = (n) => `<span class="chip ${n > 0 ? "up" : n < 0 ? "down" : ""}">${signed(n)}</span>`;
@@ -399,7 +400,7 @@ function finalScreen() {
       ${followed.length ? `<div class="small">${followed.map((x) => `${tag(x.s)} ${x.n}`).join(" · ")}</div>` : `<div class="small">The table hasn't seen enough rounds like these yet.</div>`}</div>`;
   const buttons = `<button class="go" data-k="play">${T.next && T.next.kind === "daily" ? "Play today's Daily game" : "Play"}</button>`;
   return header() + `
-    <div class="panel"><div class="big">${headline}</div><p class="hint" style="margin:6px 0 0">${sub}</p></div>
+    <div class="panel"><p class="hint" style="margin:0">${sub}</p></div>
     ${scoreboard(v, true)}
     <div class="panel"><div class="rscroll">${grid}</div></div>
     ${field}
