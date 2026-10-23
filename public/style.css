@@ -166,7 +166,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 
 
 /* the result screen's grid: a row a seat, a column a round; the bubbles keep their size and the rounds scroll sideways, the name and total stay put */
-.rscroll { overflow-x: auto; padding-bottom: 4px; }
+.rscroll { overflow-x: auto; padding-bottom: 16px; scrollbar-width: thin; }   /* room under the last row, so the scroll bar never sits over it */
 .rgrid { display: grid; grid-template-columns: 36px 44px repeat(var(--rounds), 44px); gap: 6px 0; align-items: center; width: max-content; }
 .rgrid > span { white-space: nowrap; }
 .rgrid .hd { text-align: center; font-size: 11px; color: var(--dim); }
