@@ -4,6 +4,15 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.9.5
+**Thu Oct 22, 2026**
+
+- Middle of the table: an arrow points at whose move it is (down for you, left West, up North, right East); a sitting-out seat shows 💤, and a finished round shows ✅ made or 💥 set while its summary is up. Removed: the 🤖 in the middle.
+- Turn highlight: when a hand is finished the turn goes straight to whoever leads next. Removed: the extra hop of the highlight to a sitting-out seat after the last card of a hand (it lit you, then West, then you again).
+- Face-down cards: a dimmed seat's cards are darkened instead of made see-through. Removed: the half-transparent cards that showed each other's stripes through.
+
+---
+
 ## v0.9.4
 **Thu Oct 22, 2026**
 

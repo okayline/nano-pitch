@@ -69,6 +69,8 @@ function trickEvents(plays, out, trick) {
     else if (i < plays.length) evs.push({ ...plays[i++], trick });
     else break;   // the seat whose card hasn't been played yet
   }
+  const active = out ? out.filter((o) => !o).length : 4;
+  if (plays.length >= active) while (evs.length && evs[evs.length - 1].skip) evs.pop();   // a finished trick ends on its last card: the turn doesn't hop to a sitting-out seat after it
   return evs;
 }
 const events = (h) => [...h.bids.map((b) => ({ seat: b.seat })), ...h.tricks.flatMap((t, i) => trickEvents(t.plays, h.out, i)), ...trickEvents(h.trick || [], h.out, h.tricks.length)];
@@ -81,7 +83,7 @@ function frame({ h, base, tmpl, k, evs, stage }) {
   const nb = Math.min(k, h.bids.length), shown = evs.slice(h.bids.length, Math.max(h.bids.length, k));
   const full = h.tricks.filter((_, i) => lastOf(evs, i) < k).length;   // tricks whose last move has been shown
   const cards = shown.filter((e) => e.card !== undefined), plays = cards.filter((e) => e.trick === full).map(({ seat, card }) => ({ seat, card }));
-  const out = [0, 1, 2, 3].map((s) => shown.some((e) => e.skip && e.seat === s) || !!(evs[k]?.skip && evs[k].seat === s));   // once the turn has reached a seat that sits out, it says "Sat out" for the rest of the round
+  const out = [0, 1, 2, 3].map((s) => shown.some((e) => e.skip && e.seat === s) || !!(evs[k]?.skip && evs[k].seat === s) || !!(full > 0 && h.out && h.out[s]));   // once the turn has reached a seat that sits out, it says "Sat out" for the rest of the round
   const counts = [6, 6, 6, 6], mine = [];
   for (const p of cards) { counts[p.seat]--; if (p.seat === HUMAN) mine.push(p.card); }
   const settled = nb === 4;
@@ -265,7 +267,10 @@ function gameScreen() {
   const dealer = (seat) => (v.dealer === seat ? '<span class="d">D</span>' : "");
   const spot = (seat, cls) => `<div class="seat ${cls}${v.turn === seat ? " turn" : ""}">
       <div class="nm">${pfp(seat)} ${tag(seat)}${dealer(seat)}</div>${backs(v.counts[seat], v.out && v.out[seat])}<div class="bid">${bidText(v, seat)}</div></div>`;
-  const middle = v.phase === "bid" ? `<div class="mid"><span class="bot">${ICON.table}</span><br>bidding</div>` : (tt.plays.length ? "" : `<div class="mid"><span class="bot">${ICON.table}</span></div>`);
+  const ARROW = ["⬇️", "⬅️", "⬆️", "➡️"];   // by seat: you below, West left, North above, East right
+  const res = popup ? T.view.history[seen] : null;
+  const face = res ? (res.made ? "✅" : "💥") : v.turn === null ? ICON.table : v.out && v.out[v.turn] && v.phase === "play" ? "💤" : ARROW[v.turn];   // the arrow points at whose move it is; a seat sitting out gets 💤; a finished round shows ✅ made / 💥 set
+  const middle = tt.plays.length ? "" : `<div class="mid"><span class="bot">${face}</span>${v.phase === "bid" ? "<br>bidding" : ""}</div>`;
 
   const legal = new Set(v.legal || []), canPlay = !rp && v.phase === "play" && v.turn === HUMAN, bidTurn = !rp && v.phase === "bid" && v.turn === HUMAN;
   const hand = v.hand.length ? v.hand.map((c) => (canPlay && legal.has(c) ? card(c, "ok", "c" + c) : card(c, canPlay ? "no" : bidTurn ? "dim" : ""))).join("")
