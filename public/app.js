@@ -13,7 +13,7 @@ const ICON = { table: "馃", high: "馃憫", low: "馃", jack: "馃儚", game: "馃
 
 const $app = document.getElementById("app");
 
-let T = null;          // the last answer: { game, n, view, field }
+let T = null;          // the last answer: { game, daily, day, n, view, field, next }
 let mode = "loading";  // loading | game | account
 let busy = false;
 let seen = 0;          // how many finished hands the player has been shown the result of
@@ -34,7 +34,7 @@ const pfp = (seat) => (seat === HUMAN ? myPfp : T.view.cast[seat].pfp);
 function botName(seat) {
   const name = T.view.cast[seat].name, taken = (n) => [myName, ...[1, 2, 3].map((s) => T.view.cast[s].name)].some((x) => x && x.toLowerCase() === n.toLowerCase());
   if (!myName || name.toLowerCase() !== myName.toLowerCase()) return name;
-  let h = [...`${T.game}|${seat}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7);
+  let h = [...`${T.daily ? "d" : "g"}${T.game}|${seat}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7);
   for (let i = 0; i < 50; i++) { h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; const alt = gamerTag(() => h / 4294967296); if (!taken(alt)) return alt; }
   return name;
 }
@@ -213,7 +213,7 @@ function draw() {
 }
 
 function header() {
-  const sub = T ? `${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} 路 Game #${T.game} 路 ${T.view.over ? "Final" : "Round " + ((!rp && pending() ? T.view.history[seen].no : T.view.no) + 1)}` : "";   // today's date on this device
+  const sub = T ? `${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} 路 ${gameLabel()} 路 ${T.view.over ? "Final" : "Round " + ((!rp && pending() ? T.view.history[seen].no : T.view.no) + 1)}` : "";   // today's date on this device
   const right = mode === "account" ? `<span class="row" style="gap:14px"><button class="link" data-k="esc">Back</button><a class="link" href="ledger.html">Ledger</a></span>`
     : `<span class="row" style="gap:14px"><a class="link" href="ledger.html">Ledger</a><button class="link" data-k="a">Account</button></span>`;
   return `<header><div class="title">NANO PITCH<small>${esc(sub)}</small></div>${right}</header>`;
@@ -304,7 +304,7 @@ function handPopup(h) {
   const delta = (n) => `<span class="${n > 0 ? "up" : n < 0 ? "down" : "small"}">${signed(n)}</span>`;
   return `
     <div class="panel handover">
-      <div class="big" style="font-size:24px">GAME ${T.game}, ROUND ${h.no + 1}: ${h.made ? "MADE IT!" : "SET!"}</div>
+      <div class="big" style="font-size:24px">${gameLabel().toUpperCase()}, ROUND ${h.no + 1}: ${h.made ? "MADE IT!" : "SET!"}</div>
       <p class="hint" style="margin:0">${tag(h.pitcher)} bid ${h.bid} in ${suitIcon(h.trump)} and ${h.made ? "made it!" : "got SET!"}</p>
       <div class="rows">
         ${row(`${ICON.high} High`, `${who(h.high.seat)} ${card(h.high.card, "mini")}`)}
@@ -318,6 +318,9 @@ function handPopup(h) {
     </div>`;
 }
 
+// "Game #14" or "Daily game #2"
+const gameLabel = () => (T.daily ? "Daily game #" : "Game #") + T.game;
+
 function finalScreen() {
   const v = T.view, f = T.field, place = v.place;
   const winner = v.totals.indexOf(Math.max(...v.totals));
@@ -328,7 +331,7 @@ function finalScreen() {
   if (f && f.games > 0) {
     const won = Math.round((100 * f.places[0]) / f.games);
     field = `<div class="panel">
-      <div class="kv"><span>The field</span><span>${f.games} player${f.games === 1 ? "" : "s"} finished this game</span></div>
+      <div class="kv"><span>The field</span><span>${f.games} player${f.games === 1 ? "" : "s"} finished ${T.daily ? "today's Daily game" : "this game"}</span></div>
       <div class="kv"><span>Beat the table</span><span>${f.games === 1 ? "you're the first to finish it" : `${won}% of players`}</span></div>
       <div class="kv"><span>Average game</span><span>${(f.hands / f.games).toFixed(1)} rounds</span></div></div>`;
   }
@@ -337,7 +340,7 @@ function finalScreen() {
   const followed = [1, 2, 3].map((s) => ({ s, n: botBids.filter((b) => b.seat === s && b.crowd).length })).filter((x) => x.n);
   const memory = `<div class="panel"><div class="kv"><span>The table's memory</span><span>${botBids.filter((b) => b.crowd).length} of ${botBids.length} bot bids went with the crowd</span></div>
       ${followed.length ? `<div class="small">${followed.map((x) => `${tag(x.s)} ${x.n}`).join(" 路 ")}</div>` : `<div class="small">The table hasn't seen enough rounds like these yet.</div>`}</div>`;
-  const buttons = `<button class="go" data-k="play">Play</button>`;
+  const buttons = `<button class="go" data-k="play">${T.next && T.next.kind === "daily" ? "Play today's Daily game" : "Play"}</button>`;
   return header() + `
     <div class="panel"><div class="big">${headline}</div><p class="hint" style="margin:6px 0 0">${sub}</p></div>
     ${scoreboard(v)}
@@ -403,17 +406,17 @@ async function play() {
   const r = await api("play", {});
   busy = false;
   if (r.error) { msg = r.error; return draw(); }
-  T = { game: r.game, n: r.n, view: r.view, field: r.field }; seen = T.view.history.length; playFromStart();
+  T = r; seen = T.view.history.length; playFromStart();
 }
 
 async function send(action) {
   if (busy || !T) return;
   hotBid = 0;
   busy = true; msg = ""; draw();
-  const r = await api("act", { game: T.game, n: T.n, action });
+  const r = await api("act", { game: T.game, daily: !!T.daily, n: T.n, action });
   busy = false;
   const old = T.view;
-  if (r.view) T = { game: r.game, n: r.n, view: r.view, field: r.field };   // a refused move still brings the game as it is
+  if (r.view) T = r;   // a refused move still brings the game as it is
   if (r.error) msg = r.error;
   if (r.view && !r.error) playBack(old, r.view); else draw();
 }

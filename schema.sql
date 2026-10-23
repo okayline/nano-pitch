@@ -2,22 +2,23 @@
 -- and trigger name starts with pitch_ (a test fails on any other name). Migrations in migrations/ build the same tables.
 
 -- One SHA-256 hash chain (src/ledger.js): a 'result' entry for each finished game (its number, who finished, the totals and a
--- hash of their moves). Entries from before v0.9 stay on the chain: 'day' (a UTC day's deal), 'game' and 'practice' (a finished
+-- hash of their moves), and a 'daily' entry for each finished Daily game (the same, with the Daily game's number and its UTC day). Entries from before v0.9 stay on the chain: 'day' (a UTC day's deal), 'game' and 'practice' (a finished
 -- game with its moves), and 'hand' (a single hand, from before games).
 CREATE TABLE IF NOT EXISTS pitch_ledger (
   id          INTEGER PRIMARY KEY,
-  kind        TEXT NOT NULL,          -- result | day | game | practice | hand (the last four only from before v0.9)
+  kind        TEXT NOT NULL,          -- result | daily | day | game | practice | hand (the last four only from before v0.9)
   day         TEXT NOT NULL,          -- the UTC day it was sealed
-  player_id   INTEGER,                -- game and result entries only; never published as a name
+  player_id   INTEGER,                -- game, result and daily entries only; never published as a name
   record      TEXT NOT NULL,          -- the sealed JSON record
   prev_hash   TEXT NOT NULL UNIQUE,   -- one entry per chain head: the chain can't fork
   hash        TEXT NOT NULL UNIQUE,   -- SHA-256(prev_hash + "|" + record)
   created_at  INTEGER NOT NULL,       -- unix seconds
-  game_no     INTEGER                 -- result entries only: the game's number (not part of the hash; it is also in the record)
+  game_no     INTEGER                 -- result and daily entries only: the game's number (a Daily game's, for daily) (not part of the hash; it is also in the record)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS pitch_ledger_one_day ON pitch_ledger (day) WHERE kind = 'day';
 CREATE UNIQUE INDEX IF NOT EXISTS pitch_ledger_one_game ON pitch_ledger (day, player_id) WHERE kind = 'game';
 CREATE UNIQUE INDEX IF NOT EXISTS pitch_ledger_one_result ON pitch_ledger (player_id, game_no) WHERE kind = 'result';
+CREATE UNIQUE INDEX IF NOT EXISTS pitch_ledger_one_daily ON pitch_ledger (player_id, game_no) WHERE kind = 'daily';
 
 -- The server's own settings. key 'secret': the random secret the deals are made from (made on first use).
 CREATE TABLE IF NOT EXISTS pitch_meta (
@@ -73,6 +74,28 @@ CREATE TABLE IF NOT EXISTS pitch_deals (
   games       INTEGER NOT NULL DEFAULT 0,
   hands       INTEGER NOT NULL DEFAULT 0,   -- hands played across all those games
   -- how many finished in each place (1 = the human won; a tie shares the better place)
+  place_1  INTEGER NOT NULL DEFAULT 0, place_2 INTEGER NOT NULL DEFAULT 0, place_3 INTEGER NOT NULL DEFAULT 0, place_4 INTEGER NOT NULL DEFAULT 0
+);
+
+-- Daily games: one a UTC day for everyone (Daily game #1 is engine/daily.js DAILY_START, #2 the next day...). A player's Daily
+-- games and each day's deal and field work exactly like pitch_games and pitch_deals; the seed is dailySeed of that day. The
+-- first player of the day takes the bots' memory snapshot, so everyone that day faces the same bots.
+CREATE TABLE IF NOT EXISTS pitch_daily_games (
+  player_id   INTEGER NOT NULL REFERENCES pitch_players(id),
+  n           INTEGER NOT NULL,       -- the Daily game's number
+  actions     TEXT NOT NULL,
+  done        INTEGER NOT NULL DEFAULT 0,
+  final       INTEGER,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  PRIMARY KEY (player_id, n)
+);
+CREATE TABLE IF NOT EXISTS pitch_daily_deals (
+  n           INTEGER PRIMARY KEY,
+  memory      TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  games       INTEGER NOT NULL DEFAULT 0,
+  hands       INTEGER NOT NULL DEFAULT 0,
   place_1  INTEGER NOT NULL DEFAULT 0, place_2 INTEGER NOT NULL DEFAULT 0, place_3 INTEGER NOT NULL DEFAULT 0, place_4 INTEGER NOT NULL DEFAULT 0
 );
 

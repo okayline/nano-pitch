@@ -1,11 +1,17 @@
 // Seeds: the server's secret, run through HMAC-SHA256, so nobody can work out a deal ahead of time (same method as
-// scoundrel.exe's engine/daily.js). dailySeed is how the deals were made before v0.9 (one a UTC day): the ledger page
-// still shows a past day's seed from it. gameSeed is how they are made now (one per game number).
+// scoundrel.exe's engine/daily.js). dailySeed makes each UTC day's Daily game (and made the days' deals before v0.9: the
+// ledger page still shows a past day's seed from it). gameSeed makes the numbered games (one per game number).
 // Uses Web Crypto: works in Workers, browsers, Node 18+.
 
 export function utcDay(date = new Date()) {
   return date.toISOString().slice(0, 10); // "2026-10-22"
 }
+
+// Daily games are numbered by UTC day: DAILY_START is Daily game #1, the next UTC day #2, and so on, the same for everyone.
+export const DAILY_START = "2026-10-23";
+const DAY_MS = 86400000;
+export const dailyNo = (day = utcDay()) => Math.round((Date.parse(day + "T00:00:00Z") - Date.parse(DAILY_START + "T00:00:00Z")) / DAY_MS) + 1;
+export const dayOfDaily = (d) => new Date(Date.parse(DAILY_START + "T00:00:00Z") + (d - 1) * DAY_MS).toISOString().slice(0, 10);
 
 const hex = (bytes) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 

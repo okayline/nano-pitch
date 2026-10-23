@@ -26,6 +26,11 @@ function row(e) {
     ic = r.place === 1 ? "🏆" : "🃏";
     what = `Player ${esc(r.player)} ${r.place === 1 ? "beat the table" : "placed " + ORD[r.place]} in game #${esc(r.game)}`;
     sub = `${esc(r.hands)} rounds · You ${esc(r.totals[0])} · the table ${esc(r.totals.slice(1).join(" · "))}<br>moves ${short(r.moves)}`;
+  } else if (e.kind === "daily") {
+    const r = JSON.parse(e.record);
+    ic = r.place === 1 ? "👑" : "☀️";
+    what = `Player ${esc(r.player)} ${r.place === 1 ? "beat the table" : "placed " + ORD[r.place]} in Daily game #${esc(r.daily)} (${esc(r.day)})`;
+    sub = `${esc(r.hands)} rounds · You ${esc(r.totals[0])} · the table ${esc(r.totals.slice(1).join(" · "))}<br>moves ${short(r.moves)}`;
   } else if (e.record === null) {
     ic = "🔒";
     what = `A ${e.kind === "practice" ? "practice game" : e.kind === "hand" ? "round" : "game"} on ${esc(e.day)}`;

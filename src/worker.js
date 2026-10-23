@@ -1,9 +1,11 @@
 // Nano Pitch Worker.
-//   GET  /api/game                     your game: the one in progress, else your last finished one, else game 1 (first to 11
+//   GET  /api/game                     your game (numbered, or the day's Daily game: { game, daily, day, ... }): the one in
+//                                      progress, else your last finished one, else today's Daily game, else game 1 (first to 11
 //                                      points over as many hands as it takes), as far as the bots have played; once it's over,
 //                                      the field (how everyone who finished that game placed)
-//   POST /api/play                     the next game, once your current one is finished: the next number in the sequence
-//   POST /api/act {game, n, action}    your next move: { type: "bid", bid: 0 | 2 | 3 | 4 } or { type: "play", card }.
+//   POST /api/play                     the next game, once your current one is finished: today's Daily game if you haven't
+//                                      started it (the same deal for everyone that UTC day), else the next number
+//   POST /api/act {game, daily, n, action}    your next move: { type: "bid", bid: 0 | 2 | 3 | 4 } or { type: "play", card }.
 //                                      n is how many moves the page has seen (a move from a stale tab is refused). The
 //                                      server replays the game's deals plus your moves and plays the bots. The move that ends
 //                                      the game seals it on the ledger and adds it to the field. New players: 3 an hour per address.
@@ -25,15 +27,14 @@
 // registry's Bitcoin stamp covers Pitch's ledger too.
 import { entryInsert, seal, sha256 } from "./ledger.js";
 import { giveName } from "./names.js";
-import { dailySeed, gameSeed } from "../engine/daily.js";
+import { dailySeed, gameSeed, dailyNo, dayOfDaily, utcDay } from "../engine/daily.js";
 import { verifyTip } from "../public/chain.js";
-import { HUMAN, PFP_POOL, startGame, actGame, replayGame, viewGame } from "../public/engine/pitch.js";
+import { HUMAN, PFP_POOL, SUITS, startGame, actGame, replayGame, viewGame } from "../public/engine/pitch.js";
 
 const GAME = "nano-pitch";
 const COOKIE = "np";
 const COOKIE_MAX_AGE = 400 * 86400;
 const now = () => Math.floor(Date.now() / 1000);
-const utcDay = () => new Date().toISOString().slice(0, 10);
 
 class Oops extends Error { constructor(message, status = 400, extra = null) { super(message); this.status = status; this.extra = extra; } }
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
@@ -62,22 +63,31 @@ async function secret(env) {
   return (c.secret = row.value);
 }
 
-// Game n's deal: its seed, and the table's memory of bids as it stood when the game was first asked for. Taken once, from the
+// The two kinds of game. A numbered game (kind "game", 1, 2, 3...) and the Daily game (kind "daily", numbered by UTC day: Daily
+// game #1 is DAILY_START). They work the same way, each kind in its own tables: a player's games, and each game's deal (the
+// memory snapshot and the field). A sealed numbered game is a 'result' entry on the ledger, a sealed Daily game a 'daily' one.
+const KINDS = {
+  game: { games: "pitch_games", deals: "pitch_deals", entry: "result", seed: (secret, n) => gameSeed(secret, n) },
+  daily: { games: "pitch_daily_games", deals: "pitch_daily_deals", entry: "daily", seed: (secret, n) => dailySeed(secret, dayOfDaily(n)) },
+};
+
+// A game's deal: its seed, and the table's memory of bids as it stood when the game was first asked for. Taken once, from the
 // running counts, and never changed after, so the bots (and every saved game's replay) stay the same for everyone who plays it.
-async function dealFor(env, n) {
-  const c = cached(env).deals;
-  if (c.has(n)) return c.get(n);
-  const read = () => env.DB.prepare("SELECT memory FROM pitch_deals WHERE n = ?").bind(n).first();
+// A Daily game's snapshot is taken by the first player that day, so everyone that day faces the same bots.
+async function dealFor(env, kind, n) {
+  const c = cached(env).deals, K = KINDS[kind], key = kind + ":" + n;
+  if (c.has(key)) return c.get(key);
+  const read = () => env.DB.prepare(`SELECT memory FROM ${K.deals} WHERE n = ?`).bind(n).first();
   let row = await read();
   if (!row) {
     const { results } = await env.DB.prepare("SELECT k, bid, n FROM pitch_crowd_counts").all();
     const mem = {};
     for (const r of results) (mem[r.k] ??= {})[r.bid] = r.n;
-    await env.DB.prepare("INSERT OR IGNORE INTO pitch_deals (n, memory, created_at) VALUES (?, ?, ?)").bind(n, JSON.stringify(mem), now()).run();
+    await env.DB.prepare(`INSERT OR IGNORE INTO ${K.deals} (n, memory, created_at) VALUES (?, ?, ?)`).bind(n, JSON.stringify(mem), now()).run();
     row = await read();   // another request may have won
   }
-  const deal = { seed: await gameSeed(await secret(env), n), memory: JSON.parse(row.memory) };
-  c.set(n, deal);
+  const deal = { seed: await K.seed(await secret(env), n), memory: JSON.parse(row.memory) };
+  c.set(key, deal);
   return deal;
 }
 
@@ -123,52 +133,80 @@ async function player(ctx, create = false) {
 const must = async (ctx) => { const p = await player(ctx); if (!p) throw new Oops("No player here.", 401); return p; };
 
 // ---------- the game ----------
+// A player's game is a numbered one or a Daily one: { kind, n }. Once a UTC day, the first game a player starts is that day's
+// Daily game, the same deal for everyone that day; a game already under way is finished first. Then numbered games, as many as
+// they like.
 
-const lastOf = (env, playerId) =>
-  env.DB.prepare("SELECT n, actions, done FROM pitch_games WHERE player_id = ? ORDER BY n DESC LIMIT 1").bind(playerId).first();
+const lastOf = (env, kind, playerId) =>
+  env.DB.prepare(`SELECT n, actions, done, updated_at FROM ${KINDS[kind].games} WHERE player_id = ? ORDER BY n DESC LIMIT 1`).bind(playerId).first();
 
-async function fieldOf(env, n) {
-  const r = await env.DB.prepare("SELECT * FROM pitch_deals WHERE n = ?").bind(n).first();
+async function fieldOf(env, kind, n) {
+  const r = await env.DB.prepare(`SELECT * FROM ${KINDS[kind].deals} WHERE n = ?`).bind(n).first();
   if (!r) return null;
   return { games: r.games, hands: r.hands, places: [r.place_1, r.place_2, r.place_3, r.place_4] };
 }
 
-// What the page gets: the game's number, how many moves it has seen, the game as the human may see it, and the field once it's over.
-async function answer(env, n, actions, game) {
-  return { game: n, n: actions.length, view: viewGame(game), field: game.over ? await fieldOf(env, n) : null };
+// The game a player starts next, once nothing is under way: today's Daily game if they haven't started it, else the numbered
+// game after their last (game 1 if they have none).
+function nextOf(rows) {
+  const today = dailyNo();
+  if (!rows.daily || rows.daily.n < today) return { kind: "daily", n: today };
+  return { kind: "game", n: rows.game ? rows.game.n + 1 : 1 };
 }
 
-// The player's current game: their newest, rebuilt from the game's deal and their saved moves (game 1, fresh, if they have none).
-// If those moves no longer replay (the bots or rules changed since they were made), an unfinished game starts over; a finished
-// one can't be shown again, so it gives way to the next game.
-async function current(env, me) {
-  let row = me ? await lastOf(env, me.id) : null, n = row ? row.n : 1;
-  for (;;) {
-    const { seed, memory } = await dealFor(env, n);
-    if (!row) return { n, row: null, actions: [], game: startGame(seed, memory), seed, memory, reset: false };
-    const actions = JSON.parse(row.actions);
-    try { return { n, row, actions, game: replayGame(seed, actions, memory), seed, memory, reset: false }; }
-    catch {
-      if (row.done) { row = null; n += 1; continue; }
-      await env.DB.prepare("UPDATE pitch_games SET actions = '[]', updated_at = ? WHERE player_id = ? AND n = ? AND done = 0").bind(now(), me.id, n).run();
-      return { n, row: { ...row, actions: "[]" }, actions: [], game: startGame(seed, memory), seed, memory, reset: true };
-    }
+// What the page gets: which game (its number, and whether it is a Daily game and its day), how many moves it has seen, the game
+// as the human may see it, the field once it's over, and then which game comes next.
+async function answer(env, cur, actions, game) {
+  const daily = cur.kind === "daily";
+  return {
+    game: cur.n, daily, day: daily ? dayOfDaily(cur.n) : null, n: actions.length, view: viewGame(game),
+    field: game.over ? await fieldOf(env, cur.kind, cur.n) : null,
+    next: game.over && cur.rows ? nextOf({ ...cur.rows, [cur.kind]: { n: cur.n } }) : null,
+  };
+}
+
+// A game rebuilt from its deal and the saved moves. If those moves no longer replay (the bots or rules changed since they were
+// made), an unfinished game starts over; a finished one can't be shown again (null).
+async function build(env, me, kind, n, row, rows) {
+  const { seed, memory } = await dealFor(env, kind, n), base = { kind, n, seed, memory, rows };
+  if (!row) return { ...base, row: null, actions: [], game: startGame(seed, memory), reset: false };
+  const actions = JSON.parse(row.actions);
+  try { return { ...base, row, actions, game: replayGame(seed, actions, memory), reset: false }; }
+  catch {
+    if (row.done) return null;
+    await env.DB.prepare(`UPDATE ${KINDS[kind].games} SET actions = '[]', updated_at = ? WHERE player_id = ? AND n = ? AND done = 0`).bind(now(), me.id, n).run();
+    return { ...base, row: { ...row, actions: "[]" }, actions: [], game: startGame(seed, memory), reset: true };
   }
+}
+
+// The player's current game: one under way (a Daily game first), else the one they finished last, else the next one, fresh.
+// Someone with no player yet sees today's Daily game.
+async function current(env, me) {
+  if (!me) return build(env, null, "daily", dailyNo(), null, null);
+  const rows = { daily: await lastOf(env, "daily", me.id), game: await lastOf(env, "game", me.id) };
+  for (const kind of ["daily", "game"]) if (rows[kind] && !rows[kind].done) return build(env, me, kind, rows[kind].n, rows[kind], rows);
+  const last = ["daily", "game"].filter((k) => rows[k]).sort((a, b) => rows[b].updated_at - rows[a].updated_at)[0];
+  const shown = last && (await build(env, me, last, rows[last].n, rows[last], rows));
+  if (shown) return shown;
+  const next = nextOf(rows);
+  return build(env, me, next.kind, next.n, null, rows);
 }
 
 async function getGame(ctx) {
   const cur = await current(ctx.env, await player(ctx));
-  return { ...(await answer(ctx.env, cur.n, cur.actions, cur.game)), ...(cur.reset ? { reset: true } : {}) };
+  return { ...(await answer(ctx.env, cur, cur.actions, cur.game)), ...(cur.reset ? { reset: true } : {}) };
 }
 
-// The next game in the sequence, once the current one is finished. An unfinished one is given back instead.
+// The next game, once the current one is finished: today's Daily game if the player hasn't started it, else the next number.
+// An unfinished one is given back instead.
 async function play(ctx) {
   const { env } = ctx, me = await must(ctx), cur = await current(env, me);
-  if (cur.row && !cur.row.done) return answer(env, cur.n, cur.actions, cur.game);
+  if (!cur.row || !cur.row.done) return answer(env, cur, cur.actions, cur.game);
   if (!(await rateLimit(env, ctx.req, "play", 30, 3600))) throw new Oops("Too many new games from here. Try again later.", 429);
-  const n = cur.row ? cur.n + 1 : cur.n, { seed, memory } = await dealFor(env, n), t = now();
-  await env.DB.prepare("INSERT OR IGNORE INTO pitch_games (player_id, n, actions, done, created_at, updated_at) VALUES (?, ?, '[]', 0, ?, ?)").bind(me.id, n, t, t).run();
-  return answer(env, n, [], startGame(seed, memory));
+  const next = nextOf(cur.rows), t = now();
+  const fresh = await build(env, me, next.kind, next.n, null, cur.rows);
+  await env.DB.prepare(`INSERT OR IGNORE INTO ${KINDS[next.kind].games} (player_id, n, actions, done, created_at, updated_at) VALUES (?, ?, '[]', 0, ?, ?)`).bind(me.id, next.n, t, t).run();
+  return answer(env, fresh, [], fresh.game);
 }
 
 // Only the fields a move needs, so nothing else can ride along into the ledger.
@@ -180,9 +218,9 @@ function cleanAction(a) {
 
 async function postAct(ctx) {
   const b = await body(ctx.req), { env } = ctx, action = cleanAction(b.action);
-  const me = await player(ctx, true), cur = await current(env, me), { n, row, actions } = cur;
-  const stale = async (msg) => { throw new Oops(msg, 409, await answer(env, n, actions, cur.game)); };
-  if (b.game !== n) await stale("You're on another game now.");
+  const me = await player(ctx, true), cur = await current(env, me), { kind, n, row, actions } = cur, K = KINDS[kind];
+  const stale = async (msg) => { throw new Oops(msg, 409, await answer(env, cur, actions, cur.game)); };
+  if (b.game !== n || !!b.daily !== (kind === "daily")) await stale("You're on another game now.");
   if (row && row.done) await stale("That game is already sealed.");
   if (b.n !== actions.length) await stale("This game moved on in another tab.");
   let next;
@@ -192,26 +230,28 @@ async function postAct(ctx) {
 
   // Not finished: save the moves, only if nobody else saved a move since this one was read.
   const save = (done, final) => env.DB.prepare(
-    `INSERT INTO pitch_games (player_id, n, actions, done, final, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO ${K.games} (player_id, n, actions, done, final, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (player_id, n) DO UPDATE SET actions = excluded.actions, done = excluded.done, final = excluded.final, updated_at = excluded.updated_at
-     WHERE pitch_games.done = 0 AND json_array_length(pitch_games.actions) = ?`).bind(me.id, n, JSON.stringify(moves), done, final, t, t, actions.length);
+     WHERE done = 0 AND json_array_length(actions) = ?`).bind(me.id, n, JSON.stringify(moves), done, final, t, t, actions.length);
   if (!next.over) {
     const r = await save(0, null).run();
     if (!r.meta.changes) await stale("This game moved on in another tab.");
-    return answer(env, n, moves, next);
+    return answer(env, cur, moves, next);
   }
 
-  // Finished: the game, its ledger entry and the field, in one batch.
+  // Finished: the game, its ledger entry and the field, in one batch. A numbered game's record is { game, ... } as before; a
+  // Daily game's is { daily, day, ... }.
   const mine = next.totals[HUMAN], place = 1 + next.totals.filter((x) => x > mine).length, pc = `place_${place}`;
-  const record = JSON.stringify({ game: n, player: me.id, moves: await sha256(JSON.stringify(moves)), hands: next.history.length, totals: next.totals, place });
-  const field = env.DB.prepare(`UPDATE pitch_deals SET games = games + 1, hands = hands + ?, ${pc} = ${pc} + 1 WHERE n = ?`).bind(next.history.length, n);
+  const which = kind === "daily" ? { daily: n, day: dayOfDaily(n) } : { game: n };
+  const record = JSON.stringify({ ...which, player: me.id, moves: await sha256(JSON.stringify(moves)), hands: next.history.length, totals: next.totals, place });
+  const field = env.DB.prepare(`UPDATE ${K.deals} SET games = games + 1, hands = hands + ?, ${pc} = ${pc} + 1 WHERE n = ?`).bind(next.history.length, n);
   const sealed = await seal(env.DB, async (prev) => {
-    const { hash, stmt } = await entryInsert(env.DB, prev, { kind: "result", day: utcDay(), playerId: me.id, game: n, record, t });
+    const { hash, stmt } = await entryInsert(env.DB, prev, { kind: K.entry, day: utcDay(), playerId: me.id, game: n, record, t });
     return { hash, stmts: [save(1, mine), stmt, field, ...crowdStmts(env, next.history)] };
   });
   if (sealed.duplicate) await stale("That game is already sealed.");
-  ctx.waitUntil(checkpoint(env));
-  return { ...(await answer(env, n, moves, next)), hash: sealed.hash };
+  ctx.waitUntil(checkpoint(env, gameDetail(kind, n, next, place)));
+  return { ...(await answer(env, { ...cur, rows: cur.rows || { daily: null, game: null } }, moves, next)), hash: sealed.hash };
 }
 
 async function ledger(ctx) {
@@ -222,7 +262,7 @@ async function ledger(ctx) {
   const key = results.some((e) => e.kind === "day" && e.day < day) ? await secret(env) : null;
   const entries = [];
   for (const e of results) {
-    if (e.kind !== "day" && e.kind !== "result" && e.day >= day) entries.push({ ...e, record: null });   // from before v0.9: today's games (and older hands) are shown once the day is over
+    if (!["day", "result", "daily"].includes(e.kind) && e.day >= day) entries.push({ ...e, record: null });   // from before v0.9: today's games (and older hands) are shown once the day is over
     else if (e.kind === "day" && e.day < day) entries.push({ ...e, seed: await dailySeed(key, e.day) });
     else entries.push(e);
   }
@@ -235,16 +275,32 @@ async function ledger(ctx) {
 // registry that's away never stops a game: the next checkpoint covers it. It reads only the newest two entries (verifyTip),
 // so it costs the same however long the ledger is. Entries are never deleted, so the newest id is the entry count.
 // (Copied from moba-beat src/worker.js, itself from aura-farm.)
-export async function checkpoint(env) {
+export async function checkpoint(env, detail) {
   try {
     if (!env.REGISTRY) return;
     const rows = (await env.DB.prepare("SELECT id, record, prev_hash, hash FROM pitch_ledger ORDER BY id DESC LIMIT 2").all()).results.reverse();
     if (!rows.length) return;
     const last = rows[rows.length - 1], v = await verifyTip(rows);
     if (!v.ok) return console.error("The ledger is broken at entry " + v.at + ": no checkpoint sent.");
-    const res = await env.REGISTRY.checkpoint({ game: GAME, entries: last.id, head: last.hash });
+    const res = await env.REGISTRY.checkpoint({ game: GAME, entries: last.id, head: last.hash, ...(detail ? { detail } : {}) });
     if (res && res.error) console.error("The registry refused the checkpoint: " + res.error);
   } catch (e) { console.error(e); }
+}
+
+// The public facts a finished game adds to its checkpoint, for the registry's ledger page: which game, how it ended, and what
+// the human did at each hand. Never a player. The registry takes up to 12 keys of whole numbers, short words, or lists of up
+// to 24 of them (so a long game shows its first 24 hands).
+export function gameDetail(kind, n, g, place) {
+  const mine = g.history.filter((h) => h.pitcher === HUMAN);
+  const first = (f) => g.history.slice(0, 24).map(f);
+  return {
+    kind, game: n, ...(kind === "daily" ? { day: dayOfDaily(n) } : {}),
+    hands: g.history.length, place, score: g.totals[HUMAN], top: Math.max(...g.totals),
+    pitched: mine.length, made: mine.filter((h) => h.made).length,
+    bids: first((h) => h.bids.find((b) => b.seat === HUMAN).bid),
+    trumps: first((h) => SUITS[h.trump]),
+    pitchers: first((h) => h.pitcher),
+  };
 }
 
 // ---------- save codes and passkeys (kept by the shared Accounts service in dungeon-items) ----------
