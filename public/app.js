@@ -446,8 +446,13 @@ async function api(path, data) {
   return r.json().catch(() => ({ error: "That didn't work. Try again." }));
 }
 
+// The player's own pic and name, when they have them. A new player has none until their first move makes them, so a move asks again.
+function fetchWho() {
+  api("account").then((a) => { if (a && ((a.pfp && a.pfp !== myPfp) || (a.name && a.name !== myName))) { if (a.pfp) myPfp = a.pfp; if (a.name) myName = a.name; if (mode === "game") draw(); } });
+}
+
 async function load() {
-  api("account").then((a) => { if (a && ((a.pfp && a.pfp !== myPfp) || (a.name && a.name !== myName))) { if (a.pfp) myPfp = a.pfp; if (a.name) myName = a.name; if (mode === "game") draw(); } });   // the player's own pic and name, when they have them
+  fetchWho();
   const r = await api("game");
   if (r.error) { msg = r.error; mode = "loading"; return draw(); }
   T = r;
@@ -475,6 +480,7 @@ async function send(action) {
   busy = false;
   const old = T.view;
   if (r.view) T = r;   // a refused move still brings the game as it is
+  if (!myName && !r.error) fetchWho();   // their first move made them a player: now they have a name
   if (r.error) msg = r.error;
   if (r.view && !r.error) playBack(old, r.view); else draw();
 }

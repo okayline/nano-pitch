@@ -7,6 +7,7 @@ Newest first. Times are Hawaii time (HST).
 ## v0.10
 **Fri Oct 23, 2026**
 
+- Your name: a new player's seat said "You" for the whole first game, until a reload; it now takes your name after your first move. Removed: the wait for a reload (and the second copy of the name-fetching code).
 - Daily game: once a UTC day, after the game you're in, you play that day's Daily game: the same cards and the same bots for everyone (Daily game #1 is today; the number goes up one each UTC day). It's counted on its own: "game #14, Daily game #2, game #15". It never interrupts a game in progress. Added: Daily games, their own field and results tally each day, a 'daily' entry on the ledger, and its row on the ledger page. Removed: nothing from numbered games.
 - Fixed: when it came to your turn the arrow and "your bid" went blank for a moment and then came back. They now stay on you from the last bot's move. Removed: the blank moment.
 - Table: the cards of a finished trick no longer dim; only the winner's glow stays. Removed: the dimming of the trick's other cards.
