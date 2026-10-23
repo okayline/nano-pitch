@@ -4,6 +4,17 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.9.3
+**Thu Oct 22, 2026**
+
+- Round summary: it pops up over the table instead of replacing it, and the table stays on screen the whole time. The header reads "GAME 3, ROUND 8: SET!" (or "MADE IT!") with "Name bid 3 in ♠ and got SET!" on the line below. Removed: the full-screen summary, "ROUND 8 OVER" and the "Trump" chip.
+- Sitting out: the turn goes to a seat that sits out, a beat later its "Sat out" lights up over its cards (still showing them), and then the turn moves on, including at the end of a round. Removed: "Sat out" showing from the first card on, and the turn skipping straight past that seat.
+- Chat: the chatters react to tricks ("nr", "nt", "oof", emojis), each line arrives a moment after its move at a different moment each time, the lines fade out towards the top, there are seven of them, and the names are bolder. Your own cards are in it again ("You: K♦"). "nope" and "hmm...next" read as said ("Name: nope"). The bidder's line after the bidding says "bids 2" and is left out after "stuck 2". Removed: the stepped dimming of the top lines, "wins 2", and the line after "stuck 2".
+- Table: the Pass 2 3 4 bar sits inside the table panel above your name, the highest bid's chip is always lit and never dimmed, your cards dim a little on your turn to bid, and the name and the status beside it stay on one line. Removed: the bar under the panel, the dimmed bid chip, and every line of explainer text under the game panel ("Your lead names trump", "Sealed on the ledger.", "The bots changed...").
+- Smaller things: the version number sits right under the table.
+
+---
+
 ## v0.9.2
 **Thu Oct 22, 2026**
 

@@ -378,7 +378,7 @@ export function act(state, action) {
 export function view(s) {
   const mine = s.turn === HUMAN && s.phase !== "done";
   return {
-    dealer: s.dealer, phase: s.phase, turn: s.turn, hand: s.hands[HUMAN], counts: s.hands.map((h, seat) => (s.out[seat] ? 0 : h.length)), out: s.out,
+    dealer: s.dealer, phase: s.phase, turn: s.turn, hand: s.hands[HUMAN], counts: s.hands.map((h) => h.length), out: s.out,
     bids: s.bids, bidOptions: mine && s.phase === "bid" ? bidOptions(s.bids, s.dealer, HUMAN) : null,
     pitcher: s.pitcher, bid: s.bid, trump: s.trump, trick: s.trick, tricks: s.tricks,
     legal: mine && s.phase === "play" ? legalPlays(s.hands[HUMAN], s.trick, s.trump) : null,
