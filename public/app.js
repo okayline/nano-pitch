@@ -78,7 +78,8 @@ const progress = (v) => events(v).length;
 const lastOf = (evs, trick) => evs.reduce((m, e, j) => (e.trick === trick ? j : m), -1);   // index of a trick's last move
 
 // The table after the first k moves of hand h. `base` is the player's cards before any of the replayed moves; `tmpl` gives
-// everything that isn't the hand's moves (totals, hand number, dealer).
+// everything that isn't the hand's moves (totals, hand number, dealer). After the last move the turn stays where the live hand has it (yours),
+// so it doesn't blink off and back; a finished hand's summary has no turn, so nobody has it.
 function frame({ h, base, tmpl, k, evs, stage }) {
   const nb = Math.min(k, h.bids.length), shown = evs.slice(h.bids.length, Math.max(h.bids.length, k));
   const full = h.tricks.filter((_, i) => lastOf(evs, i) < k).length;   // tricks whose last move has been shown
@@ -91,7 +92,7 @@ function frame({ h, base, tmpl, k, evs, stage }) {
     ...tmpl, dealer: h.dealer, bids: h.bids.slice(0, nb), tricks: h.tricks.slice(0, full), trick: plays,
     counts, out, hand: base.filter((c) => !mine.includes(c)), phase: settled ? "play" : "bid",
     pitcher: settled ? h.pitcher : null, bid: settled ? h.bid : 0, trump: cards.length ? suitOf(cards[0].card) : null,
-    turn: k < evs.length ? evs[k].seat : null, legal: null, bidOptions: null,
+    turn: k < evs.length ? evs[k].seat : (h.turn ?? null), legal: null, bidOptions: null,
     hold: stage < 3 && k > 0 && !evs[k - 1].skip ? evs.slice(0, k).filter((e) => !e.skip).length - 1 : null, stage,   // the chat holds back the newest move's lines in turn: the move itself at stage 1, its follow-ups (its emoji, who took the trick, who has the bid) at stage 2, the chatters' reactions at stage 3
   };
 }
