@@ -9,7 +9,7 @@ const SUIT = ["♣", "♦", "♥", "♠"];
 const RED = [false, true, true, false];
 const RANK = { 10: "10", 11: "J", 12: "Q", 13: "K", 14: "A" };
 const ORD = ["", "1st", "2nd", "3rd", "4th"];
-const ICON = { table: "🤖", high: "👑", low: "🪶", jack: "🃏", game: "🎯" };
+const ICON = { table: "🤖", high: "👑", low: "🪶", jack: "🃏", game: "🎯", bid: "🔥" };
 
 const $app = document.getElementById("app");
 
@@ -20,7 +20,7 @@ let seen = 0;          // how many finished hands the player has been shown the 
 let msg = "";
 let acct = null, newCode = null, acctMsg = "";
 let hotBid = 0;        // the bid lit on the bid panel: Pass at first, then the last one the mouse was on, until you bid
-let preview = null;   // before their first move a visitor is shown a name the server rolled and signed ({ name, sig }); the first move sends it back so it becomes theirs
+let preview = null;   // a guest's name: the server rolls and signs one ({ name, sig }), the page keeps it, and it is sent back only with a save code or passkey
 let myName = "";      // the player's own name, shown on their seat (empty until the server has one: the seat says "You")
 let myPfp = "😎";      // the player's own profile pic (kept on the server; 😎 until they roll one)
 
@@ -362,9 +362,9 @@ function handPopup(h) {
         ${row(`${ICON.low} Low`, `${who(h.low.seat)} <span class="small">played</span> ${card(h.low.card, "mini")}`)}
         ${row(`${ICON.jack} Jack`, h.jack ? `${who(h.jack.seat)} ${card(h.jack.card, "mini")}` : `<span class="small">not in play</span>`)}
         ${row(`${ICON.game} Game`, h.gameWinner === null ? `<span class="small">tied: nobody</span>` : `${who(h.gameWinner)} <span class="small">${h.gameTotals[h.gameWinner]} card points</span>`)}
+        ${row(`${ICON.bid} Bid`, `${who(h.pitcher)} bid ${h.bid}: ${h.made ? `<b class="up">made it</b>` : `<b class="down">set ${-h.bid}</b>`}`)}
+        ${row("This round", [0, 1, 2, 3].map((s) => `${s === HUMAN && myName ? `<span class="tag">${esc(myName)}</span>` : tag(s)} ${delta(h.final[s])}`).join(" "))}
       </div>
-      <div class="r4h">This round</div>
-      <div class="r4">${[0, 1, 2, 3].map((s) => `<div class="${s === HUMAN ? "you" : ""}"><span class="nm">${s === HUMAN && myName ? `<span class="tag">${esc(myName)}</span>` : tag(s)}</span><span class="d">${delta(h.final[s])}</span></div>`).join("")}</div>
       <button class="go" data-k="go">${last && v.over ? "See the result" : "Next round"}</button>
     </div>`;
 }
@@ -418,7 +418,7 @@ function accountScreen() {
     <div class="panel">
       <div class="row" style="flex-wrap:nowrap;gap:12px">
         ${a.player ? `<button class="avatar" data-k="pfp" aria-label="Change your profile pic">${myPfp}</button>` : ""}
-        <div class="big" style="font-size:22px;text-align:left">${a.player ? `${esc(a.name || "player " + a.id)}'s account` : "ACCOUNT"}</div>
+        <div class="big" style="font-size:22px;text-align:left">${a.player ? `${esc(a.name || myName || "player " + a.id)}'s account` : "ACCOUNT"}</div>
       </div>
       ${a.player ? `<p class="small" style="margin:6px 0 0">Tap your pic for a new one.</p>` : ""}
       <p class="small">${!a.player ? "No player here yet: play a card, or log in below."
@@ -447,6 +447,12 @@ async function api(path, data) {
   return r.json().catch(() => ({ error: "That didn't work. Try again." }));
 }
 
+// The guest name the page holds: keep it (and remember it for a reload), or drop it once a save code or passkey made it theirs.
+function holdName(p) {
+  preview = p;
+  try { if (p) localStorage.setItem("np-preview", JSON.stringify(p)); else localStorage.removeItem("np-preview"); } catch {}
+}
+
 // The player's own pic and name, when they have them. A new player has none until their first move makes them, so a move asks again.
 function fetchWho() {
   api("account").then((a) => { if (a && ((a.pfp && a.pfp !== myPfp) || (a.name && a.name !== myName))) { if (a.pfp) myPfp = a.pfp; if (a.name) myName = a.name; if (mode === "game") draw(); } });
@@ -457,9 +463,9 @@ async function load() {
   const r = await api("game");
   if (r.error) { msg = r.error; mode = "loading"; return draw(); }
   T = r;
-  if (r.you) {   // not a player yet: keep the name they were first shown (so a reload doesn't change it), and show it as theirs
+  if (r.you) {   // a guest (no name on the server): keep the name they were first shown (so a reload doesn't change it), and show it as theirs
     try { const kept = JSON.parse(localStorage.getItem("np-preview")); if (kept && kept.name && kept.sig) preview = kept; } catch {}
-    if (!preview) { preview = r.you; try { localStorage.setItem("np-preview", JSON.stringify(preview)); } catch {} }
+    if (!preview) holdName(r.you);
     if (!myName) myName = preview.name;
   }
   msg = "";
@@ -482,12 +488,10 @@ async function send(action) {
   if (busy || !T) return;
   hotBid = 0;
   busy = true; msg = ""; draw();
-  const r = await api("act", { game: T.game, daily: !!T.daily, n: T.n, action, ...(preview ? { preview } : {}) });
+  const r = await api("act", { game: T.game, daily: !!T.daily, n: T.n, action });
   busy = false;
   const old = T.view;
   if (r.view) T = r;   // a refused move still brings the game as it is
-  if (preview && !r.error) { preview = null; try { localStorage.removeItem("np-preview"); } catch {} }   // they're a player now: the name they were shown is theirs
-  if (!myName && !r.error) fetchWho();
   if (r.error) msg = r.error;
   if (r.view && !r.error) playBack(old, r.view); else draw();
 }
@@ -506,10 +510,10 @@ async function pickPfp(e) {
   myPfp = r.pfp; await openAccount("");
 }
 async function openAccount(m = "") { acctMsg = m; acct = await api("account"); if (acct.pfp) myPfp = acct.pfp; if (acct.name) myName = acct.name; mode = "account"; draw(); }
-async function changed(m) { newCode = null; await load(); await openAccount(m); }
+async function changed(m) { newCode = null; holdName(null); await load(); await openAccount(m); }
 
 const ACCOUNT_KEYS = {
-  async new() { const r = await api("codes", { action: "new" }); if (r.error) return openAccount(r.error); newCode = r.code; await load(); await openAccount(); },
+  async new() { const r = await api("codes", { action: "new", ...(preview ? { preview } : {}) }); if (r.error) return openAccount(r.error); newCode = r.code; holdName(null); await load(); await openAccount(); },
   async copy() { try { await navigator.clipboard.writeText(newCode); acctMsg = "Copied. Keep it somewhere safe."; } catch { acctMsg = "Couldn't copy. Write it down instead."; } draw(); },
   async dl() {
     const text = `Daily Pitch save code\r\n\r\n  ${newCode}\r\n\r\nOn any browser: open ${location.origin}, open Account, and use this code under "Log in on this device".\r\nIt works in the other 88x31 games too. Keep it private: anyone with it can log in as you.\r\n`;
@@ -519,14 +523,18 @@ const ACCOUNT_KEYS = {
   },
   async use() { const code = (document.getElementById("codein")?.value || "").trim(); const r = await api("load", { code }); if (r.error) return openAccount(r.error); await changed("Logged in."); },
   async pfp() { const others = PFP_POOL.filter((e) => e !== myPfp); await pickPfp(others[Math.floor(Math.random() * others.length)]); },   // a random new pic each tap
-  async name() { const r = await api("name", {}); if (r.error) return openAccount(r.error); await openAccount(`You're ${r.name} now.`); },
+  async name() {
+    const r = await api("name", {}); if (r.error) return openAccount(r.error);
+    if (r.sig) { holdName({ name: r.name, sig: r.sig }); myName = r.name; }   // a guest: the new name stays in this browser
+    await openAccount(`You're ${r.name} now.`);
+  },
   async out() { const r = await api("logout", {}); if (r.error) return openAccount(r.error); await changed("Logged out."); },
   async pk() {
     acctMsg = "Waiting for your fingerprint, face or PIN…"; draw();
     try {
-      const o = await api("passkey", { action: "register_options" }); if (o.error) return openAccount(o.error);
+      const o = await api("passkey", { action: "register_options", ...(preview ? { preview } : {}) }); if (o.error) return openAccount(o.error);
       const cred = await navigator.credentials.create({ publicKey: { ...o, challenge: unb64(o.challenge), user: { ...o.user, id: unb64(o.user.id) }, excludeCredentials: (o.excludeCredentials || []).map((c) => ({ ...c, id: unb64(c.id) })) } });
-      const r = await api("passkey", { action: "register", label: device(), credential: { id: cred.id, response: { clientDataJSON: b64(cred.response.clientDataJSON), attestationObject: b64(cred.response.attestationObject) } } });
+      const r = await api("passkey", { action: "register", ...(preview ? { preview } : {}), label: device(), credential: { id: cred.id, response: { clientDataJSON: b64(cred.response.clientDataJSON), attestationObject: b64(cred.response.attestationObject) } } });
       if (r.error) return openAccount(r.error);
       await changed("Passkey added.");
     } catch (e) { acctMsg = pkOops(e); draw(); }

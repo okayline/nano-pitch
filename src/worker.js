@@ -1,6 +1,6 @@
 // Nano Pitch Worker.
-//   GET  /api/game                     (a visitor who isn't a player yet also gets `you`: a name the server rolled and signed, sent back with
-//                                      their first move so it becomes theirs) your game (numbered, or the day's Daily game: { game, daily, day, ... }): the one in
+//   GET  /api/game                     (a guest, with no name stored, also gets `you`: a name the server rolled and signed, which the page
+//                                      keeps and sends back only with a save code or passkey) your game (numbered, or the day's Daily game: { game, daily, day, ... }): the one in
 //                                      progress, else your last finished one, else today's Daily game, else game 1 (first to 11
 //                                      points over as many hands as it takes), as far as the bots have played; once it's over,
 //                                      the field (how everyone who finished that game placed)
@@ -131,9 +131,10 @@ async function player(ctx, create = false) {
   ctx.setCookie = cookieFor(fresh);
   return row;
 }
-// A visitor who isn't a player yet is shown a name from the start, so the page never has to call them "You". The server rolls it and
-// signs it (HMAC with the server's secret, so nobody can type their own); their first move sends it back and it becomes their name,
-// unless someone has taken it since, then they get another. Looking still makes no player.
+// A guest is shown a name from the start, so the page never has to call them "You". The server rolls it and signs it (HMAC with the
+// server's secret, so nobody can type their own), and the page keeps it: the server stores no name for a guest. It is sent back only
+// when they make a save code or a passkey, and then it becomes their name (unless someone has taken it since: then they get another).
+// Looking, and playing, still tell the server nothing about it.
 async function hmacHex(env, text) {
   const enc = new TextEncoder(), key = await crypto.subtle.importKey("raw", enc.encode(await secret(env)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return [...new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode("preview:" + text)))].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -209,7 +210,8 @@ async function current(env, me) {
 
 async function getGame(ctx) {
   const me = await player(ctx), cur = await current(ctx.env, me);
-  return { ...(await answer(ctx.env, cur, cur.actions, cur.game)), ...(cur.reset ? { reset: true } : {}), ...(me ? {} : { you: await previewName(ctx.env) }) };
+  const named = me && (await ctx.env.DB.prepare("SELECT name FROM pitch_players WHERE id = ?").bind(me.id).first())?.name;
+  return { ...(await answer(ctx.env, cur, cur.actions, cur.game)), ...(cur.reset ? { reset: true } : {}), ...(named ? {} : { you: await previewName(ctx.env) }) };   // a guest (no name stored) is offered one to show
 }
 
 // The next game, once the current one is finished: today's Daily game if the player hasn't started it, else the next number.
@@ -233,9 +235,7 @@ function cleanAction(a) {
 
 async function postAct(ctx) {
   const b = await body(ctx.req), { env } = ctx, action = cleanAction(b.action);
-  const had = !!(await player(ctx)), me = await player(ctx, true);
-  if (!had && (await previewOk(env, b.preview))) await giveName(env, me.id, null, { first: b.preview.name });   // the name they were shown becomes theirs
-  const cur = await current(env, me), { kind, n, row, actions } = cur, K = KINDS[kind];
+  const me = await player(ctx, true), cur = await current(env, me), { kind, n, row, actions } = cur, K = KINDS[kind];
   const stale = async (msg) => { throw new Oops(msg, 409, await answer(env, cur, actions, cur.game)); };
   if (b.game !== n || !!b.daily !== (kind === "daily")) await stale("You're on another game now.");
   if (row && row.done) await stale("That game is already sealed.");
@@ -392,7 +392,7 @@ async function account(ctx) {
   const ways = id ? ok(await ACC(ctx.env).info(id)) : { codes: [], passkeys: [] };
   const devices = 1 + (await ctx.env.DB.prepare("SELECT COUNT(*) AS n FROM pitch_sessions WHERE player_id = ?").bind(me.id).first()).n;
   const row = await ctx.env.DB.prepare("SELECT name, pfp FROM pitch_players WHERE id = ?").bind(me.id).first();
-  return { player: true, id: me.id, name: await giveName(ctx.env, me.id, row?.name), pfp: row?.pfp ?? null, codes: ways.codes, passkeys: ways.passkeys, devices };
+  return { player: true, id: me.id, name: id ? await giveName(ctx.env, me.id, row?.name) : row?.name ?? null, pfp: row?.pfp ?? null, codes: ways.codes, passkeys: ways.passkeys, devices };
 }
 
 // The player's own profile pic, one of the pool.
@@ -404,9 +404,14 @@ async function setPfp(ctx) {
 }
 
 // A new random name for the player (names can't be typed).
+// A save code or passkey is being made: the name the page showed this guest becomes their name (a made-up one is ignored).
+async function adoptName(env, me, preview) {
+  await giveName(env, me.id, null, (await previewOk(env, preview)) ? { first: preview.name } : {});
+}
 async function reroll(ctx) {
   const me = await must(ctx);
   if (!(await rateLimit(ctx.env, ctx.req, "name", 30, 3600))) throw new Oops("Too many name changes from here. Try again later.", 429);
+  if (!(await accountFor(ctx.env, me))) return previewName(ctx.env);   // a guest's name lives only in their browser: a new one to show, nothing stored
   const row = await ctx.env.DB.prepare("SELECT name FROM pitch_players WHERE id = ?").bind(me.id).first();
   return { name: await giveName(ctx.env, me.id, row?.name, { reroll: true }) };
 }
@@ -414,8 +419,9 @@ async function reroll(ctx) {
 async function codes(ctx) {
   const b = await body(ctx.req);
   if (b.action === "new") {
-    const me = await player(ctx, true);
-    return { code: ok(await ACC(ctx.env).addCode(await accountFor(ctx.env, me, true))).code };
+    const me = await player(ctx, true), accountId = await accountFor(ctx.env, me, true);
+    await adoptName(ctx.env, me, b.preview);
+    return { code: ok(await ACC(ctx.env).addCode(accountId)).code };
   }
   if (b.action === "remove") {
     const me = await must(ctx), id = await accountFor(ctx.env, me);
@@ -442,6 +448,7 @@ async function passkey(ctx) {
   }
   if (b.action === "register_options" || b.action === "register") {
     const me = await player(ctx, true), accountId = await accountFor(env, me, true);
+    await adoptName(env, me, b.preview);
     if (b.action === "register_options") return ok(await acc.passkeyRegisterOptions({ accountId, origin }));
     return ok(await acc.passkeyRegister({ accountId, origin, credential: b.credential, label: b.label }));
   }

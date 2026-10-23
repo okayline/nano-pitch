@@ -376,24 +376,37 @@ test("the ledger shows a finished game's player name, the table's names and the 
   assert.ok(cookie);
 });
 
-test("a visitor is shown a signed name before their first move, and the first move makes it theirs; a forged or taken one is not", async () => {
+test("a guest is shown a signed name that stays in their browser; a save code makes it theirs; a made-up one isn't", async () => {
   const { call, raw } = setup();
   const t = await call("/api/game");
   assert.match(t.you.name, /^[A-Z][a-z]+ [A-Za-z]+$/);
   assert.equal(t.you.sig, createHmac("sha256", secretOf(raw)).update("preview:" + t.you.name).digest("hex"));   // signed with the server's secret
-  assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM pitch_players").get().n, 0);   // looking still makes no player
-  const move = (who, ip) => call("/api/act", { body: { ...mv(t, first(t.view)), preview: who }, ip });
-  const r = await move(t.you, "1.1.1.1");
-  assert.equal(r.status, 200);
-  assert.equal(raw.prepare("SELECT name FROM pitch_players").get().name, t.you.name);   // the name they were shown is theirs
-  assert.equal((await call("/api/game", { cookie: r.cookie })).you, undefined);   // a player is not offered another
-  // the same name again (taken now) gives the next player another; a made-up one is ignored
-  const r2 = await move(t.you, "2.2.2.2");
-  assert.notEqual(raw.prepare("SELECT name FROM pitch_players WHERE id = 2").get()?.name ?? null, t.you.name);
-  const r3 = await move({ name: "Typed Myself", sig: "0".repeat(64) }, "3.3.3.3");
-  assert.equal(r3.status, 200);
-  assert.notEqual(raw.prepare("SELECT name FROM pitch_players WHERE id = 3").get()?.name ?? null, "Typed Myself");
-  assert.ok(r2.cookie && r3.cookie);
+  assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM pitch_players").get().n, 0);   // looking makes no player
+  const first1 = await call("/api/act", { body: { ...mv(t, first(t.view)), preview: t.you }, ip: "1.1.1.1" });   // even if the page sent it, a move stores no name
+  assert.equal(first1.status, 200);
+  const nameOf = (id) => raw.prepare("SELECT name FROM pitch_players WHERE id = ?").get(id).name;
+  assert.equal(nameOf(1), null);
+  assert.equal((await call("/api/account", { cookie: first1.cookie })).name, null);   // looking at the account gives a guest no name either
+  assert.equal(nameOf(1), null);
+  assert.ok((await call("/api/game", { cookie: first1.cookie })).you);   // a guest keeps being offered one to show
+  const re = await call("/api/name", { body: {}, cookie: first1.cookie });   // a guest's reroll: a new signed name to show, nothing stored
+  assert.equal(re.sig, createHmac("sha256", secretOf(raw)).update("preview:" + re.name).digest("hex"));
+  assert.equal(nameOf(1), null);
+  // a save code makes the name they were shown theirs
+  assert.ok((await call("/api/codes", { body: { action: "new", preview: t.you }, cookie: first1.cookie })).code);
+  assert.equal(nameOf(1), t.you.name);
+  assert.equal((await call("/api/game", { cookie: first1.cookie })).you, undefined);   // named: no more offers
+  // the same name again (taken now) gives another; a made-up name is ignored
+  const second = await call("/api/act", { body: mv(t, first(t.view)), ip: "2.2.2.2" });
+  await call("/api/codes", { body: { action: "new", preview: t.you }, cookie: second.cookie });
+  assert.ok(nameOf(2) && nameOf(2) !== t.you.name);
+  const third = await call("/api/act", { body: mv(t, first(t.view)), ip: "3.3.3.3" });
+  await call("/api/codes", { body: { action: "new", preview: { name: "Typed Myself", sig: "0".repeat(64) } }, cookie: third.cookie });
+  assert.ok(nameOf(3) && nameOf(3) !== "Typed Myself");
+  // an account holder's reroll is stored
+  const rr = await call("/api/name", { body: {}, cookie: first1.cookie });
+  assert.equal(nameOf(1), rr.name);
+  assert.equal(rr.sig, undefined);
 });
 
 test("new players: 3 an hour from one address", async () => {
@@ -439,6 +452,7 @@ test("usernames: a random name when the account is looked at, rerolled on reques
   const { call, raw } = setup();
   const t = await call("/api/game");
   const r0 = await call("/api/act", { body: mv(t, first(t.view)) });
+  await call("/api/codes", { body: { action: "new" }, cookie: r0.cookie });   // a guest has no name on the server: a save code gives one
   const a = await call("/api/account", { cookie: r0.cookie });
   assert.match(a.name, /^[A-Z][A-Za-z]+ [A-Za-z]+$/);
   assert.equal((await call("/api/account", { cookie: r0.cookie })).name, a.name);   // it stays until rerolled
