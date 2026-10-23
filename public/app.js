@@ -20,6 +20,7 @@ let seen = 0;          // how many finished hands the player has been shown the 
 let msg = "";
 let acct = null, newCode = null, acctMsg = "";
 let hotBid = 0;        // the bid lit on the bid panel: Pass at first, then the last one the mouse was on, until you bid
+let hotCard = "";      // the card the mouse is on ("c" + card), so a redraw gives it back already lifted instead of dropping it for a moment
 let preview = null;   // a guest's name: the server rolls and signs one ({ name, sig }), the page keeps it, and it is sent back only with a save code or passkey
 let myName = "";      // the player's own name, shown on their seat (empty until the server has one: the seat says "You")
 let myPfp = "😎";      // the player's own profile pic (kept on the server; 😎 until they roll one)
@@ -409,7 +410,7 @@ function gameScreen() {
 
   const live = canAct(), lv = rp ? T.view : v;   // in the last pause the table is still a frame, but the server's view knows what you may play
   const legal = new Set(lv.legal || []), canPlay = live && v.phase === "play" && v.turn === HUMAN, bidTurn = live && v.phase === "bid" && v.turn === HUMAN;
-  const hand = v.hand.length ? v.hand.map((c) => (canPlay && legal.has(c) ? card(c, "ok", "c" + c) : card(c, canPlay ? "no" : bidTurn ? "dim" : ""))).join("")
+  const hand = v.hand.length ? v.hand.map((c) => (canPlay && legal.has(c) ? card(c, "ok" + (hotCard === "c" + c ? " hot" : ""), "c" + c) : card(c, canPlay ? "no" : bidTurn ? "dim" : ""))).join("")
     : '<div class="pc blank" aria-hidden="true"></div>'.repeat(6);   // no cards left: invisible ones hold the row open at the size of a hand
 
   let bidding = "";
@@ -572,7 +573,7 @@ async function play() {
 
 async function send(action) {
   if (busy || !T) return;
-  hotBid = 0;
+  hotBid = 0; hotCard = "";
   busy = true; msg = ""; draw();
   const r = await api("act", { game: T.game, daily: !!T.daily, n: T.n, action });
   busy = false;
@@ -659,11 +660,15 @@ function press(k) {
 
 // The lit bid follows the mouse and stays where it left (a redraw keeps it too, through hotBid).
 $app.addEventListener("mouseover", (e) => {
+  const c = e.target.closest(".hand .pc.ok");
+  hotCard = c ? c.dataset.k : "";   // the redraws while the table plays (and the chat) rebuild your cards; this keeps the one under the mouse lifted
   const b = e.target.closest(".bids button:not(:disabled)");
   if (!b) return;
   hotBid = Number(b.dataset.k.slice(1));
   for (const x of b.parentElement.children) x.classList.toggle("hot", x === b);
 });
+
+$app.addEventListener("mouseleave", () => { hotCard = ""; });
 
 $app.addEventListener("click", (e) => {
   const el = e.target.closest("[data-k]");

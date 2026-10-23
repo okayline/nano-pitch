@@ -4,6 +4,11 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.11.2
+**Fri Oct 23, 2026**
+
+- Your cards: a card under the mouse stays lifted when the table redraws. The table is rebuilt several times while the bots move and the chat talks, and each rebuild gave you fresh cards that started at rest, so the one you were pointing at dropped and lifted again. The page now remembers which card the mouse is on (like the lit bid) and draws it lifted from the start. Removed: the drop on every redraw.
+
 ## v0.11.1
 **Fri Oct 23, 2026**
 

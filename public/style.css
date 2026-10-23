@@ -106,7 +106,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .hand .pc { flex: 1; width: auto; max-width: 64px; border-radius: 10px; transition: transform .12s, box-shadow .12s, opacity .12s; }
 .hand .pc b { font-size: 16px; top: 5px; left: 6px; } .hand .pc i { font-size: 30px; margin-top: 6px; }
 .hand .pc.ok { box-shadow: 0 0 0 2px var(--a), 0 0 16px rgba(176,132,255,.6); }
-.hand .pc.ok:hover { transform: translateY(-6px); }
+.hand .pc.ok:hover, .hand .pc.ok.hot { transform: translateY(-6px); }
 .hand .pc.ok::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 6px; }   /* the lift moves the card off a pointer resting on its bottom edge, which dropped the hover and made it jump; this strip rides with the card and keeps it hovered */
 .hand .pc.no { opacity: .35; }
 .hand .pc.dim { opacity: .7; }   /* your turn to bid: the cards can't be played yet, so they dim a little */
