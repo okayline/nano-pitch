@@ -263,7 +263,7 @@ function gameScreen() {
   const tt = tableTrick(v);
   const played = (seat, cls) => {
     const p = tt.plays.find((x) => x.seat === seat);
-    return p ? `<div class="${cls}">${card(p.card, tt.done ? (tt.winner === seat ? "win" : "dim") : "")}</div>` : "";
+    return p ? `<div class="${cls}">${card(p.card, tt.done && tt.winner === seat ? "win" : "")}</div>` : "";
   };
   const dealer = (seat) => (v.dealer === seat ? '<span class="d">D</span>' : "");
   const spot = (seat, cls) => `<div class="seat ${cls}${v.turn === seat ? " turn" : ""}">
