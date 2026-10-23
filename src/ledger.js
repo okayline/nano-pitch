@@ -3,14 +3,13 @@
 //
 //   hash = SHA-256( prev_hash + "|" + record )
 //
-// Two kinds of entry:
-//   day   { day, seed_hash, memory_hash }: seed_hash is SHA-256 of the day's secret seed. It proves the deal was fixed before
-//         anyone played; the seed itself is shown once the day is over, so anyone can rebuild the deal and check every hand.
-//         memory_hash is SHA-256 of the table's memory of bids as it stood when the day began (pitch_crowd), which the bots
-//         follow all day. (Entries from before v0.4 have no memory_hash.)
-//   game  { day, player, actions, hands, totals, place }: a player's finished game: every bid and card they played, in order,
-//         and the totals and place the server worked out by replaying them. Players are ids, never names. Hidden until the
-//         day is over, because everyone holds the same cards. (Older entries of kind 'hand' are single hands.)
+// One kind of entry is written now:
+//   result { game, player, moves, hands, totals, place }: a player's finished game: its number, the player (an id, never a
+//         name), a SHA-256 of the moves they made (so they can show them later), how many hands it took, the final totals and
+//         the place the server worked out by replaying the moves. The deal and the cards are never on the ledger, because
+//         everyone who plays game N holds the same cards. (game_no, with the player, is UNIQUE: a game seals once.)
+// Entries from before v0.9 stay on the chain and are still shown: 'day' { day, seed_hash, memory_hash } (a day's deal, its seed
+// shown once the day was over), 'game' and 'practice' (a finished game with every move in it), and 'hand' (a single hand).
 //
 // The first entry chains from GENESIS. Changing any old record breaks its hash and every hash after it. prev_hash is
 // UNIQUE, so the chain can't fork.
@@ -28,7 +27,7 @@ export async function head(db) {
 }
 
 // Two requests can read the same head at once; prev_hash UNIQUE lets only one of them build on it. The other is sealed
-// again on the new head. Another UNIQUE clash (that day's entry, that player's game that day) means it's already there.
+// again on the new head. Another UNIQUE clash (that player's result for that game) means it's already there.
 const chainClash = (e) => /UNIQUE/i.test(String(e && e.message)) && /pitch_ledger\.(prev_)?hash/.test(String(e.message));
 const anyUnique = (e) => /UNIQUE/i.test(String(e && e.message));
 
@@ -47,22 +46,8 @@ export async function seal(db, build) {
   throw new Error("The ledger is busy. Try again.");
 }
 
-export async function entryInsert(db, prev, { kind, day, playerId = null, record, t }) {
+export async function entryInsert(db, prev, { kind, day, playerId = null, game = null, record, t }) {
   const hash = await sha256(prev + "|" + record);
-  return { hash, stmt: db.prepare("INSERT INTO pitch_ledger (kind, day, player_id, record, prev_hash, hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(kind, day, playerId, record, prev, hash, t) };
-}
-
-// The day's entry, sealing it first if it isn't on the chain yet: { hash, sealed }.
-const dayRow = (db, day) => db.prepare("SELECT hash FROM pitch_ledger WHERE kind = 'day' AND day = ?").bind(day).first();
-export async function dayEntry(db, day, seedHash, memoryHash, t) {
-  const got = await dayRow(db, day);
-  if (got) return { hash: got.hash, sealed: false };
-  const record = JSON.stringify({ day, seed_hash: seedHash, memory_hash: memoryHash });
-  const r = await seal(db, async (prev) => {
-    const { hash, stmt } = await entryInsert(db, prev, { kind: "day", day, record, t });
-    return { hash, stmts: [stmt] };
-  });
-  if (r.duplicate) return { hash: (await dayRow(db, day)).hash, sealed: false };
-  return { hash: r.hash, sealed: true };
+  return { hash, stmt: db.prepare("INSERT INTO pitch_ledger (kind, day, player_id, record, prev_hash, hash, created_at, game_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(kind, day, playerId, record, prev, hash, t, game) };
 }

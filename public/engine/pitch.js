@@ -198,7 +198,7 @@ export function crowdSeen(hand, high, memory, persona = null) {
 export const PERSONAS = [{ lean: -1 }, { lean: 1 }, { crowdMin: 3 }];   // a bot with none bids by its own count and the crowd
 
 // Names like aura-farm's: gen-z slang, two words ("Cracked Goblin"), the same lists (aura-farm src/names.js, copied), only the
-// pairs of 16 characters or fewer so a name fits a seat and the header on a phone.
+// pairs of 12 characters or fewer so a name fits on one line in a seat and a scoreboard card.
 const ADJECTIVES = [
   "Rizzed", "Unbothered", "Sigma", "Based", "Bussin", "Mewing", "Goated", "Lowkey", "Highkey", "Sus",
   "Cracked", "Iconic", "Slay", "Ohio", "Skibidi", "Chill", "Cooked", "Glazed", "Aura", "Drippy",
@@ -210,7 +210,7 @@ const NOUNS = [
   "Opp", "Stan", "Himbo", "Girlboss", "Goat", "Gamer", "Lurker", "Ghost", "Noob", "Sidekick",
   "Tryhard", "Enjoyer", "Ratio",
 ];
-const PAIRS = ADJECTIVES.flatMap((a) => NOUNS.map((n) => `${a} ${n}`)).filter((s) => s.length <= 16);
+const PAIRS = ADJECTIVES.flatMap((a) => NOUNS.map((n) => `${a} ${n}`)).filter((s) => s.length <= 12);
 
 // The profile pics: the bots draw theirs from these each game, and a player picks theirs from them (the Worker checks it).
 export const PFP_POOL = ["😎", "🐸", "🦊", "🐙", "🦄", "🐲", "👻", "🤖", "👽", "🐱", "🐶", "🦉", "🐧", "🍄", "🌵", "🔥", "💎", "🎲", "🃏", "🍕", "🌮", "🧃", "🪩", "🛸", "🐌", "🗿", "🧊", "🙂"];

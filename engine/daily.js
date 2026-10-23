@@ -1,8 +1,6 @@
-// The daily deal: everyone gets the same shuffle each UTC day, and nobody can work it out ahead of time.
-// Seed = HMAC-SHA256(secret, "daily:" + "YYYY-MM-DD"). The secret lives only on the server (a Cloudflare secret),
-// so the browser never sees a seed until the day is over. Same method as scoundrel.exe's engine/daily.js.
-// The ledger's day entry will hold seedHash(seed): it proves the deal was fixed before anyone played, and once
-// the day is over the seed itself can be shown so anyone can check the deal.
+// Seeds: the server's secret, run through HMAC-SHA256, so nobody can work out a deal ahead of time (same method as
+// scoundrel.exe's engine/daily.js). dailySeed is how the deals were made before v0.9 (one a UTC day): the ledger page
+// still shows a past day's seed from it. gameSeed is how they are made now (one per game number).
 // Uses Web Crypto: works in Workers, browsers, Node 18+.
 
 export function utcDay(date = new Date()) {
@@ -19,7 +17,12 @@ export async function dailySeed(secret, day = utcDay()) {
   return hex(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode("daily:" + day))));
 }
 
-// SHA-256 of the seed, as hex: what the ledger commits to before play.
-export async function seedHash(seed) {
-  return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(seed))));
+// Game n's deal (Nano Pitch's games are numbered 1, 2, 3...): HMAC-SHA256(secret, "game:" + n). Everyone who plays game n gets
+// the same shuffle, and nobody can work out a deal before the game is asked for.
+export async function gameSeed(secret, n) {
+  if (!secret) throw new Error("gameSeed needs the server secret.");
+  if (!Number.isInteger(n) || n < 1) throw new Error(`Bad game number "${n}".`);
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hex(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode("game:" + n))));
 }

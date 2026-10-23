@@ -45,21 +45,22 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--a), var(--b)); }
 .score .bar { margin: 6px 8px 0; position: relative; overflow: visible; }
 .score .bar.neg { z-index: 2; }   /* below zero the fill runs left from the bar's start, out of the card and over its neighbour */
-.score .bar.neg i { position: absolute; top: 0; right: 100%; background: linear-gradient(270deg, #ff6f91, var(--b)); box-shadow: 0 0 10px rgba(255,111,145,.7); }
+.score .bar.neg i { position: absolute; top: 0; right: 100%; background: linear-gradient(270deg, #ff2d3f, #ff5a5f); box-shadow: 0 0 10px rgba(255,45,63,.7); }
 
 /* the table */
-.table { display: grid; grid-template-columns: 1fr 1.4fr 1fr; grid-template-areas: ". n ." "w c e" ". s ."; gap: 8px; align-items: center;
+.table { display: grid; grid-template-columns: 1fr 1.4fr 1fr; grid-template-areas: ". n ." "w c e" ". s ." "h h h"; gap: 8px; align-items: center;
          background: radial-gradient(ellipse at 50% 45%, #241a40 0%, var(--panel) 70%); }
 .seat { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
+.seat.s { flex-direction: row; justify-content: center; gap: 10px; }   /* your name, with your status text to its right */
 .seat.n { grid-area: n; } .seat.w { grid-area: w; } .seat.e { grid-area: e; } .seat.s { grid-area: s; }
 .seat .em { font-size: 26px; line-height: 1; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--panel2); border: 1px solid var(--line); }
 .table:has(.seat.turn) .seat:not(.turn) { opacity: .5; }   /* whose move it is: everyone else dims, theirs glows a little */
 .seat { transition: opacity .2s; }
 .seat.turn .nm { filter: drop-shadow(0 0 5px rgba(255,111,207,.7)); }
-.seat .nm { font-size: 12px; color: var(--mute); }
+.seat .nm { font-size: 15px; color: var(--mute); }
 .seat .nm .d { display: inline-block; margin-left: 4px; font-size: 10px; font-weight: 800; color: var(--bg); background: var(--c); border-radius: 4px; padding: 0 4px; }
-.backs { display: flex; height: 22px; }
-.backs i { width: 14px; height: 20px; margin-left: -6px; border-radius: 3px; border: 1px solid var(--line);
+.backs { display: flex; height: 46px; }
+.backs i { width: 30px; height: 44px; margin-left: -14px; border-radius: 5px; border: 1px solid var(--line);
            background: repeating-linear-gradient(45deg, #2a1f4a 0 3px, #3a2a66 3px 6px); }
 .backs i:first-child { margin-left: 0; }
 .seat .bid { min-height: 22px; }
@@ -85,6 +86,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .pc.mini { width: 26px; border-radius: 5px; vertical-align: middle; display: inline-grid; }
 .pc.mini b { font-size: 9px; top: 2px; left: 3px; } .pc.mini i { font-size: 13px; margin-top: 4px; }
 .hand { display: flex; justify-content: center; gap: 6px; }
+.table .hand { grid-area: h; }   /* your cards sit in the table panel, under "You" */
 .hand .pc { flex: 1; width: auto; max-width: 64px; border-radius: 10px; transition: transform .12s, box-shadow .12s, opacity .12s; }
 .hand .pc b { font-size: 16px; top: 5px; left: 6px; } .hand .pc i { font-size: 30px; margin-top: 6px; }
 .hand .pc.ok { box-shadow: 0 0 0 2px var(--a), 0 0 16px rgba(176,132,255,.6); }
@@ -97,11 +99,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .ghost { width: 100%; height: 46px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel2); font-weight: 700; }
 .bids { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .bids button { height: 50px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel2); font-family: var(--meme); font-size: 20px; letter-spacing: .5px; }
-.bids button.hot:not(:disabled) { border-color: transparent; background: linear-gradient(135deg, var(--a), var(--b)); box-shadow: 0 0 16px rgba(255,111,207,.4); }   /* Pass is preselected */
-@media (hover: hover) {
-  .bids button:not(:disabled):hover { border-color: transparent; background: linear-gradient(135deg, var(--a), var(--b)); box-shadow: 0 0 16px rgba(255,111,207,.4); }
-  .bids:has(button:not(.hot):not(:disabled):hover) button.hot { border-color: var(--line); background: var(--panel2); box-shadow: none; }   /* pointing at another bid hands the highlight to it */
-}
+.bids button.hot:not(:disabled) { border-color: transparent; background: linear-gradient(135deg, var(--a), var(--b)); box-shadow: 0 0 16px rgba(255,111,207,.4); }   /* the lit bid: Pass at first, then the last one the mouse was on */
 .bids button:disabled { opacity: .3; }
 .hint { text-align: center; color: var(--mute); font-size: 14px; min-height: 20px; }
 .msg { text-align: center; color: var(--mute); font-size: 13px; min-height: 18px; }
@@ -109,14 +107,13 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 /* the move list: the newest moves in the table's top right corner, like a stream's chat */
 .table { position: relative; }
 .feed { position: absolute; top: 5px; right: 10px; width: 42%; display: flex; flex-direction: column; gap: 2px;
-        font-size: 11px; line-height: 1.3; text-align: right; pointer-events: none; z-index: 1;
-        text-shadow: 0 1px 3px #000, 0 0 6px #000; }
+        font-size: 10px; line-height: 1.3; font-weight: 400; text-align: right; pointer-events: none; z-index: 1;
+        text-shadow: none; }   /* no glow in the chat, not on the names either */
+.feed .tag.s1, .feed .tag.s2, .feed .tag.s3 { text-shadow: none; }
 .feed div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* one line per move, never two */
-.feed div:nth-last-child(n+3) { opacity: .8; }
-.feed div:nth-last-child(n+4) { opacity: .6; }
-.feed div:nth-last-child(n+5) { opacity: .4; }
-.feed div.out { position: absolute; left: 0; right: 0; bottom: 100%; opacity: 0; }   /* the line that just scrolled off: sits above the feed, fades out */
 .ct { font-weight: 800; color: var(--ink); }
+.feed .ct { font-weight: 400; }   /* in the chat the names are bold and the moves are not */
+.seat.turn .bid .chip { opacity: .5; }   /* the bid chip stays dim, even on its seat's turn */
 .ct.r { color: #ff6f91; }
 
 /* results */
@@ -133,9 +130,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 
 /* account */
 .avatar { flex: none; width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel2); font-size: 30px; line-height: 1; }
-.avatar:hover, .picker button.on { border-color: var(--b); box-shadow: 0 0 12px rgba(255,111,207,.5); }
-.picker { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 10px 0 4px; }
-.picker button { height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); font-size: 24px; line-height: 1; }
+.avatar:hover { border-color: var(--b); box-shadow: 0 0 12px rgba(255,111,207,.5); }
 .codein { width: 100%; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); font: inherit; padding: 0 12px; text-transform: uppercase; }
 .code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; word-break: break-all; color: var(--ink); text-shadow: 0 0 8px var(--a); }
 .ver { text-align: center; font-size: 11px; color: var(--dim); }

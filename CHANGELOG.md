@@ -4,6 +4,16 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.9 — "Any Game"
+**Thu Oct 22, 2026**
+
+- Games: every game is a number (1, 2, 3...) that fixes its deal, and everyone plays the same sequence in order, one at a time. The final screen has one Play button for the next game. The table's memory of bids is saved with each game when it is first asked for, so a game's bots never change. A finished game seals a result on the ledger: the game's number, the player, the hands, the totals and a hash of the moves (never the cards), so anyone can see the results without seeing a deal. Database: migration 006_games.sql (pitch_games, pitch_deals, the ledger's game_no) now, then 007_drop_days_and_practice.sql once this is live. Removed: the daily game, practice games and New game, "Today's game" and "Next deal in" (and the one-game-a-day gate), the day entries on the ledger and the seed reveal for new games (older entries stay), the date in the header, and the game you had unfinished under the old day-based deals (finished games stay on the ledger).
+- The table: your cards sit inside the table panel under your name, your name replaces "You" on your seat with your status ("your bid") to its right; seat names and the face-down cards are much bigger; a negative score's bar is red.
+- Chat: each message arrives on its own (an emoji, "takes trick" or "has the bid" no longer lands with the move before it), nothing fades, and the words vary: mostly just the card, sometimes "slaps down", "drops", "serves", "leads", "opens", "nope", "folds", "goes 3", "gets their 3", "W". Removed: the fade-out on older lines, the glow on names, and the plain "plays" on every move.
+- Smaller things: the bid panel stays on the bid you last pointed at, the bid chip never lights up, Reroll name (the button sits above the line), a profile pic is a random roll when you tap it, and names are 12 characters or shorter. Removed: the Bidder chip, the big profile pic menu, and names longer than 12 characters.
+
+---
+
 ## v0.8 — "New Faces"
 **Thu Oct 22, 2026**
 

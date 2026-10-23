@@ -7,7 +7,7 @@ import {
   gameWinnerOf, scoreHand, estimate, bestSuit, botBid, botPlay, start, act, advance, view, suitOf,
   TARGET, CROWD_MIN, crowdKey, leader, startGame, actGame, replayGame, viewGame, castOf, PFP_POOL,
 } from "../public/engine/pitch.js";
-import { dailySeed, seedHash } from "../engine/daily.js";
+import { dailySeed, gameSeed } from "../engine/daily.js";
 
 const C = (codes) => codes.split(" ").map(cardFromCode);
 const H = 2; // hearts, as a suit number
@@ -154,7 +154,7 @@ test("the cast: each bot draws a personality (or none) and a name from the game'
     if (new Set(ps).size < 3) doubled++;   // two bots can share a personality
     assert.equal(new Set(c.slice(1).map((x) => x.name)).size, 3);           // three different names
     assert.equal(new Set(c.slice(1).map((x) => x.pfp)).size, 3);            // and three different profile pics
-    for (const x of c.slice(1)) { assert.ok(PFP_POOL.includes(x.pfp)); assert.match(x.name, /^[A-Z][A-Za-z]+ [A-Za-z]+$/); assert.ok(x.name.length <= 16); names.add(x.name); }
+    for (const x of c.slice(1)) { assert.ok(PFP_POOL.includes(x.pfp)); assert.match(x.name, /^[A-Z][A-Za-z]+ [A-Za-z]+$/); assert.ok(x.name.length <= 12); names.add(x.name); }
     seatings.add(ps.join(","));
   }
   assert.ok(seatings.size > 5 && names.size > 10 && doubled > 0);   // seats, repeats and names vary from game to game
@@ -351,12 +351,18 @@ test("illegal moves are refused, and the view hides the bots' cards", () => {
   assert.equal("seed" in v, false);
 });
 
-test("the daily seed is HMAC-SHA256(secret, 'daily:' + day), and its hash is SHA-256 of the seed", async () => {
+test("seeds: a day's is HMAC-SHA256(secret, 'daily:' + day) and a game's is HMAC-SHA256(secret, 'game:' + number)", async () => {
   const seed = await dailySeed("s3cret", "2026-10-22");
   assert.equal(seed, createHmac("sha256", "s3cret").update("daily:2026-10-22").digest("hex"));
   assert.notEqual(seed, await dailySeed("s3cret", "2026-10-23"));
   assert.notEqual(seed, await dailySeed("other", "2026-10-22"));
-  assert.equal(await seedHash(seed), createHash("sha256").update(seed).digest("hex"));
+  const g = await gameSeed("s3cret", 7);   // a game's seed: HMAC-SHA256(secret, "game:7")
+  assert.equal(g, createHmac("sha256", "s3cret").update("game:7").digest("hex"));
+  assert.notEqual(g, await gameSeed("s3cret", 8));
+  assert.notEqual(g, await gameSeed("other", 7));
+  await assert.rejects(() => gameSeed("", 7));
+  await assert.rejects(() => gameSeed("s3cret", 0));
+  await assert.rejects(() => gameSeed("s3cret", 1.5));
   await assert.rejects(() => dailySeed("", "2026-10-22"));
   await assert.rejects(() => dailySeed("s3cret", "22-10-2026"));
 });

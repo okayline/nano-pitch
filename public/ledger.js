@@ -1,6 +1,6 @@
 // The ledger page: the chain from /api/ledger, newest first. "Check the chain" fetches every entry and checks every hash in
-// this browser (chain.js, the same check the Worker runs before a registry checkpoint). Today's games come back with no
-// record (hidden until the day is over), so for them only the link to the entry before is checked.
+// this browser (chain.js, the same check the Worker runs before a registry checkpoint). Entries from before numbered games
+// that are from today come back with no record (hidden until the day is over), so for them only the link to the entry before is checked.
 import { verifyChain } from "./chain.js";
 import { VERSION } from "./version.js";
 
@@ -21,6 +21,11 @@ function row(e) {
     what = `<b>${esc(r.day)}</b>: the day's deal was fixed`;
     sub = `seed hash ${short(r.seed_hash)}` + (r.memory_hash ? ` · table memory ${short(r.memory_hash)}` : "")
       + (e.seed ? `<br>seed ${short(e.seed)} (the day is over: anyone can rebuild its deals)` : "<br>seed shown once the day is over");
+  } else if (e.kind === "result") {
+    const r = JSON.parse(e.record);
+    ic = r.place === 1 ? "🏆" : "🃏";
+    what = `Player ${esc(r.player)} ${r.place === 1 ? "beat the table" : "placed " + ORD[r.place]} in game #${esc(r.game)}`;
+    sub = `${esc(r.hands)} hands · You ${esc(r.totals[0])} · the table ${esc(r.totals.slice(1).join(" · "))}<br>moves ${short(r.moves)}`;
   } else if (e.record === null) {
     ic = "🔒";
     what = `A ${e.kind === "practice" ? "practice game" : e.kind === "hand" ? "hand" : "game"} on ${esc(e.day)}`;
@@ -46,7 +51,7 @@ async function page() {
   $("entries").insertAdjacentHTML("beforeend", entries.map(row).join(""));
   if (entries.length) oldest = entries[entries.length - 1].id;
   $("more").hidden = entries.length < 50;
-  if (!entries.length && !oldest) $("entries").innerHTML = `<li class="entry"><span class="ic">🌱</span><span class="what">Nothing sealed yet.</span><span class="sub">The first visit of the day seals its deal.</span></li>`;
+  if (!entries.length && !oldest) $("entries").innerHTML = `<li class="entry"><span class="ic">🌱</span><span class="what">Nothing sealed yet.</span><span class="sub">A finished game seals its result here.</span></li>`;
 }
 
 $("check").addEventListener("click", async () => {
