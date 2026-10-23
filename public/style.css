@@ -174,7 +174,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 
 /* the result screen's grid: a row a seat, a column a round; the bubbles keep their size and the rounds scroll sideways, the name and total stay put */
 .rwrap { display: flex; align-items: flex-start; }   /* the pic and total stay put on the left; only the rounds scroll, so the bar sits under the rounds in every browser */
-.rleft { display: grid; grid-template-columns: 34px 30px; grid-template-rows: 16px repeat(4, 30px); gap: 6px 0; align-items: center; flex: none; position: relative; z-index: 1; box-shadow: 6px 0 6px -4px rgba(0,0,0,.6); background: var(--panel); }   /* the first two columns are narrow so six rounds fit on a phone */
+.rleft { display: grid; grid-template-columns: 34px 30px; grid-template-rows: 16px repeat(4, 30px); gap: 6px 0; align-items: center; flex: none; position: relative; z-index: 1; background: var(--panel); }   /* the first two columns are narrow so six rounds fit on a phone */
 .rleft > span { white-space: nowrap; display: flex; align-items: center; justify-content: center; }
 .rleft .c0 { font-size: 20px; }
 .rscroll { overflow-x: auto; min-width: 0; padding-bottom: 16px; }

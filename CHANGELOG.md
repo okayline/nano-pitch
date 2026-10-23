@@ -4,6 +4,11 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.12.5
+**Fri Oct 23, 2026**
+
+- Rounds grid: the dark shadow on the right edge of the pic and total block is gone. Added: nothing. Removed: that shadow.
+
 ## v0.12.4
 **Fri Oct 23, 2026**
 
