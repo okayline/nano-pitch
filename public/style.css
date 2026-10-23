@@ -67,7 +67,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .seat.n { grid-area: n; } .seat.w { grid-area: w; } .seat.e { grid-area: e; } .seat.s { grid-area: s; }
 .seat .em { font-size: 26px; line-height: 1; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--panel2); border: 1px solid var(--line); }
 .table:has(.seat.turn) .seat:not(.turn) > .nm, .table:has(.seat.turn) .seat:not(.turn) .bid .small { opacity: .5; }
-.table:has(.seat.turn) .seat:not(.turn) .backs i { filter: brightness(.55); }   /* dimmed with a darker colour, not see-through: overlapping cards must not show each other */   /* whose move it is: everyone else dims, theirs glows a little; a bid chip is never dimmed */
+.table:has(.seat.turn:not(.out)) .seat:not(.turn) .backs i { filter: brightness(.55); }   /* dimmed with a darker colour, not see-through: overlapping cards must not show each other */   /* whose move it is: everyone else dims, theirs glows a little; a bid chip is never dimmed */
 .seat > * { transition: opacity .2s; }
 .backs i { transition: filter .2s; }
 .seat.turn .nm { filter: drop-shadow(0 0 5px rgba(255,111,207,.7)); }

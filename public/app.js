@@ -134,8 +134,8 @@ const idleBatches = new Map();
 const idleKey = (v) => `${T.game}|${T.daily ? "d" : "n"}|${v.no}`;
 const moveCount = (v) => v.bids.length + v.tricks.reduce((n, t) => n + t.plays.length, 0) + v.trick.length;
 const IDLE = {
-  bid: ["come on", "pass?", "go 4 coward", "bid bid bid", "tick tock", "👀", "hmm", "🍿", "no pressure", "waiting lol"],
-  play: ["come on", "play it", "ur turn", "tick tock", "big brain time", "that's the one", "👀", "🍿", "no pressure", "waiting lol", "trump it", "hmm"],
+  bid: ["you got this", "good luck", "ooh", "take your time", "👀", "hmm", "🍿", "gl", "nice hand?", "😄"],
+  play: ["you got this", "good luck", "ooh", "take your time", "big brain time", "that's the one", "👀", "🍿", "trump it", "hmm", "nice", "😄"],
 };
 function idleStep() {
   if (mode !== "game" || !T || busy || rp || pending() || T.view.over || T.view.turn !== HUMAN) return;
@@ -204,25 +204,34 @@ function moveLines(v) {
     have: ["gets their", "gets", "bids"],
   };
   const SAID = new Set(["nope", "hmm...next"]);
-  const REACT = { big: ["nr", "nt", "oof", "rip", "ez", "💀", "😭", "🔥", "😬"], plain: ["nr", "nt", "gg", "lol", "hm", "👀", "🫡", "😮"] };   // what the chatters say about a trick
+  const REACT = { big: ["nr", "nt", "oof", "💀", "😭", "🔥", "😬"], plain: ["nr", "nt", "gg", "lol", "hm", "👀", "🫡", "😮"] };   // what the chatters say about a trick
   // What the bots say about the bidding and about how a round ended: someone bidding 4, the bidder making it or getting set.
-  const CHIME = { bold: ["bold", "😳", "oh ok", "???", "🫣"], made_self: ["ez", "W", "easy", "💪", "told u"], set_self: ["rip", "oof", "💀", "bruh", "😭"],
-    made_other: ["nice", "gg", "ok ok", "👀", "damn"], set_other: ["lol", "L", "😬", "oof", "rip"],
+  const CHIME = { bold: ["bold", "😳", "oh ok", "???", "🫣"], made_self: ["W", "easy", "💪"], set_self: ["oof", "💀", "bruh", "😭"],
+    made_other: ["nice", "gg", "ok ok", "👀", "damn"], set_other: ["lol", "😬", "oof"],
     then: ["fr", "ngl", "real", "lmao", "true", "clean", "classic", "bruh", "ok next"] };   // what the viewers add while the round's card is up
   const chatter = (i) => VIEWER + (spin(i, 3, "who") % VIEWERS);   // one of the viewers, who comment on what the table does
   const chime = (kind, i) => CHIME[kind][spin(i, 6, kind) % CHIME[kind].length];
   const word = (kind, i, s) => WORDS[kind][spin(i, s, kind) % WORDS[kind].length];
   const card = (kind, i, p) => (p.seat === HUMAN || spin(i, p.seat, "bare") % 10 < 6 ? cardTxt(p.card) : `${word(kind, i, p.seat)} ${cardTxt(p.card)}`);   // most of the time just the card
+  // On a bot's turn a viewer says one of the friendly turn lines (IDLE) after its move. Flagged like the idle lines (seventh item) so a bot's emoji stays on the same moves; never the same words twice in a row.
+  let lastTurn = -1;
+  const turnLine = (pool, ev) => {
+    let w = spin(E.length, 4, "turn") % pool.length;
+    if (w === lastTurn) w = (w + 1) % pool.length;
+    lastTurn = w;
+    return [chatter(E.length), pool[w], ev, 2, true, 0, true];
+  };
   const E = [];   // [seat, text, index of the move it belongs to, is it a follow-up (0 the move, 1 a follow-up, 2 a chatter's reaction), is it said or played, a card or a spoken pass (those read "name: card", the rest "name folds")]
   v.bids.forEach((b, j) => {
     const said = !b.forced && !b.bid && SAID.has(word("pass", E.length, b.seat));   // "nope" and "hmm...next" are said, "passes" and "folds" are done
     E.push([b.seat, b.forced ? "stuck 2" : b.bid ? `${word("bid", E.length, b.seat)} ${b.bid}` : word("pass", E.length, b.seat), j, false, said]);
     if (b.bid === 4 && spin(E.length, 8, "bold") % 100 < 60) E.push([chatter(E.length), chime("bold", E.length), j, 2, true]);   // a 4 gets a reaction most of the time
+    if (b.seat !== HUMAN) E.push(turnLine(IDLE.bid, j));
   });
   if (v.pitcher !== null && !v.bids.find((b) => b.seat === v.pitcher).forced) E.push([v.pitcher, `${word("have", E.length, v.pitcher)} ${v.bid}`, v.bids.length - 1, 1, false]);
   let first = true, mv = v.bids.length;
   for (const t of [...v.tricks, { plays: v.trick, winner: null }]) {
-    for (const p of t.plays) { E.push([p.seat, card(first ? "lead" : "play", E.length, p), mv++, false, true]); first = false; }
+    for (const p of t.plays) { E.push([p.seat, card(first ? "lead" : "play", E.length, p), mv++, false, true]); first = false; if (p.seat !== HUMAN) E.push(turnLine(IDLE.play, mv - 1)); }
     if (t.winner !== null) {
       E.push([t.winner, word("win", E.length, t.winner), mv - 1, 1, false]);
       // The viewers comment on the trick: a ten or the trump jack in it gets a reaction most of the time, any other trick now and then.
@@ -401,7 +410,7 @@ function gameScreen() {
   const dealer = (seat) => (v.dealer === seat ? '<span class="d">D</span>' : "");
   const spot = (seat, cls) => {   // N, W and E: the held cards stand in a column beside the hand (left of it, but right of it for E), starting at the bottom
     const bk = backs(v.counts[seat], v.out && v.out[seat]), col = own(seat, true), side = cls === "e" ? bk + col : col + bk;
-    return `<div class="seat ${cls}${v.turn === seat ? " turn" : ""}">
+    return `<div class="seat ${cls}${v.turn === seat ? " turn" : ""}${v.out && v.out[seat] ? " out" : ""}">
       <div class="nm">${pfp(seat)} ${tag(seat)}${dealer(seat)}</div><div class="bk">${side}</div><div class="bid">${bidText(v, seat)}</div></div>`;
   };
   const ARROW = ["⬇️", "⬅️", "⬆️", "➡️"];   // by seat: you below, West left, North above, East right
@@ -427,7 +436,7 @@ function gameScreen() {
       <div class="center">${played(2, "tn")}${played(1, "tw")}${middle}${played(3, "te")}${played(0, "ts")}</div>
       ${spot(3, "e")}
       ${bidding}
-      <div class="seat s${v.turn === HUMAN ? " turn" : ""}"><div class="nm">${pfp(0)} ${myName ? `<span class="tag">${esc(myName)}</span>` : tag(0)}${dealer(0)}</div><div class="bid">${bidText(v, 0)}</div>${own(0, false)}</div>
+      <div class="seat s${v.turn === HUMAN ? " turn" : ""}${v.out && v.out[0] ? " out" : ""}"><div class="nm">${pfp(0)} ${myName ? `<span class="tag">${esc(myName)}</span>` : tag(0)}${dealer(0)}</div><div class="bid">${bidText(v, 0)}</div>${own(0, false)}</div>
       <div class="hand">${hand}${v.out && v.out[0] ? SAT : ""}</div>
       ${popup ? `<div class="popup">${handPopup(T.view.history[seen])}</div>` : ""}
     </div>
@@ -658,13 +667,15 @@ function press(k) {
 $app.addEventListener("mouseover", (e) => {
   const c = e.target.closest(".hand .pc.ok");
   hotCard = c ? c.dataset.k : "";   // the redraws while the table plays (and the chat) rebuild your cards; this keeps the one under the mouse lifted
+  for (const x of document.querySelectorAll(".hand .pc.hot")) if (x !== c) x.classList.remove("hot");   // the card the mouse left drops now, not at the next redraw
+  if (c) c.classList.add("hot");
   const b = e.target.closest(".bids button:not(:disabled)");
   if (!b) return;
   hotBid = Number(b.dataset.k.slice(1));
   for (const x of b.parentElement.children) x.classList.toggle("hot", x === b);
 });
 
-$app.addEventListener("mouseleave", () => { hotCard = ""; });
+$app.addEventListener("mouseleave", () => { hotCard = ""; for (const x of document.querySelectorAll(".hand .pc.hot")) x.classList.remove("hot"); });
 
 $app.addEventListener("click", (e) => {
   const el = e.target.closest("[data-k]");

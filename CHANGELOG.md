@@ -4,6 +4,23 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.11.6
+**Fri Oct 23, 2026**
+
+- Your cards: a card no longer stays lifted after the mouse leaves it. The lift stays on a card while the table redraws (v0.11.2), but the mark that holds it was only taken off at the next redraw, so a card could stay up until something redrew the table. It is now taken off as soon as the mouse moves off the card or out of the page. Removed: the card staying up after the mouse has left.
+
+## v0.11.5
+**Fri Oct 23, 2026**
+
+- Chat on the bots' turns: after each bot's bid or card, a viewer now says one of the friendly turn lines too ("you got this", "good luck", "take your time", "nice"...), not only on your turn. Never the same words twice in a row. Removed: nothing.
+
+## v0.11.4
+**Fri Oct 23, 2026**
+
+- Sat-out seats: when the turn hops over a seat that sits out, only its name lights up; the other seats' cards no longer darken, so no cards look highlighted. Removed: the dimming of the other seats' cards during that hop.
+- Chat while it's your turn: still runs the whole time, but the lines are friendly now ("you got this", "good luck", "take your time", "nice"...). Removed: "come on", "pass?", "go 4 coward", "bid bid bid", "tick tock", "waiting lol", "play it", "ur turn" and "no pressure".
+- Chat after tricks and rounds: Removed: "rip", "ez", "L" and "told u". Kept: "💀" and "bruh".
+
 ## v0.11.3
 **Fri Oct 23, 2026**
 
