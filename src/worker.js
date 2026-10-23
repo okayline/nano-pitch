@@ -14,6 +14,8 @@
 //                                      practice, hand): today's are hidden (everyone held the same cards); a past day's entry
 //                                      also shows its seed. Results (kind 'result') are public: a game's number, who finished,
 //                                      the totals, and a hash of their moves, never the deal or the cards.
+//   GET  /api/hands?daily=0|1&n=N      one of YOUR finished games, hand by hand: every bid and every trick (rebuilt from the deal and your
+//                                      saved moves). Only the player who finished it can ask: everyone who plays game N holds the same cards.
 //   GET  /api/account, POST /api/codes, /api/load, /api/passkey, /api/logout: save codes and passkeys (shared Accounts)
 //   POST /api/pfp                      the player's own profile pic, one of the emoji in PFP_POOL (the account answer gives it)
 //   POST /api/name                     a new random name for the player (names can't be typed; account also gives one)
@@ -279,6 +281,7 @@ async function ledger(ctx) {
   const url = new URL(ctx.req.url), day = utcDay(), env = ctx.env, plain = url.searchParams.get("plain") === "1";
   const before = Number(url.searchParams.get("before")) || Number.MAX_SAFE_INTEGER;
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 30));
+  const me = plain ? null : await player(ctx);   // looking never makes a player; it only tells which entries are yours
   const { results } = await env.DB.prepare("SELECT id, kind, day, record, prev_hash, hash, created_at FROM pitch_ledger WHERE id < ? ORDER BY id DESC LIMIT ?").bind(before, limit).all();
   const finished = (e) => e.kind === "result" || e.kind === "daily";
   const key = results.some((e) => (e.kind === "day" && e.day < day) || (!plain && finished(e))) ? await secret(env) : null;
@@ -301,10 +304,26 @@ async function ledger(ctx) {
     else if (!plain && finished(e)) {
       const r = recs.get(e.id), daily = e.kind === "daily", p = names.get(r.player);
       const seed = daily ? await dailySeed(key, r.day) : await gameSeed(key, r.game);
-      entries.push({ ...e, name: p ? p.name : null, pfp: p ? p.pfp : null, table: castOf(seed).slice(1).map((c) => ({ name: c.name, pfp: c.pfp })), field: fields[e.kind].get(daily ? r.daily : r.game) ?? null });
+      entries.push({ ...e, mine: !!me && r.player === me.id, name: p ? p.name : null, pfp: p ? p.pfp : null, table: castOf(seed).slice(1).map((c) => ({ name: c.name, pfp: c.pfp })), field: fields[e.kind].get(daily ? r.daily : r.game) ?? null });
     } else entries.push(e);
   }
   return { entries };
+}
+
+// One of your finished games, hand by hand: every bid and every trick in order, and how the hand was scored. Rebuilt from the deal
+// and your saved moves, so only the player who finished it can ask (everyone who plays game N holds the same cards). A game whose
+// moves no longer replay (the bots changed since) can't be shown.
+async function hands(ctx) {
+  const { env } = ctx, url = new URL(ctx.req.url), kind = url.searchParams.get("daily") === "1" ? "daily" : "game", n = Number(url.searchParams.get("n"));
+  const me = await player(ctx);
+  const row = me && Number.isInteger(n) && n > 0 ? await env.DB.prepare(`SELECT n, actions, done, updated_at FROM ${KINDS[kind].games} WHERE player_id = ? AND n = ? AND done = 1`).bind(me.id, n).first() : null;
+  if (!row) throw new Oops("You haven't finished that game.", 404);
+  const cur = await build(env, me, kind, n, row, null);
+  if (!cur) throw new Oops("That game can't be shown any more: the bots changed since it was played.", 410);
+  return {
+    game: n, daily: kind === "daily",
+    hands: cur.game.history.map((h) => ({ no: h.no, dealer: h.dealer, out: h.out, trump: h.trump, pitcher: h.pitcher, bid: h.bid, made: h.made, final: h.final, high: h.high, low: h.low, jack: h.jack, gameWinner: h.gameWinner, gameTotals: h.gameTotals, bids: h.bids.map((b) => ({ seat: b.seat, bid: b.bid, forced: !!b.forced })), tricks: h.tricks })),
+  };
 }
 
 // ---------- the registry checkpoint ----------
@@ -476,7 +495,7 @@ async function logout(ctx) {
 // ---------- routing ----------
 
 const ROUTES = {
-  "GET /api/game": getGame, "POST /api/play": play, "POST /api/act": postAct, "GET /api/ledger": ledger,
+  "GET /api/game": getGame, "POST /api/play": play, "POST /api/act": postAct, "GET /api/ledger": ledger, "GET /api/hands": hands,
   "GET /api/account": account, "POST /api/codes": codes, "POST /api/load": loadCode, "POST /api/passkey": passkey, "POST /api/logout": logout, "POST /api/name": reroll, "POST /api/pfp": setPfp,
 };
 

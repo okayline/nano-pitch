@@ -4,6 +4,11 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.12
+**Fri Oct 23, 2026**
+
+- Hand history: on the Ledger page, each of your own finished games has a "Show hands" button. It opens the game round by round, the newest round first: the bids, then each trick, newest first (who played which card and who took it), then High, Low, Jack, Game and each seat's score for the round. Nobody else sees your hands, and a game's cards are never shown to anyone who hasn't finished it, because everyone who plays game N holds the same deal. A game that can't be rebuilt any more (the bots changed since it was played) says so. Added: the `GET /api/hands` answer and a `mine` mark on your entries in `GET /api/ledger`. Removed: nothing.
+
 ## v0.11.6
 **Fri Oct 23, 2026**
 

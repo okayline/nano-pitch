@@ -481,3 +481,32 @@ test("the migrations build the same tables as schema.sql", () => {
   const migrations = readdirSync(dir).sort().map((f) => readFileSync(new URL(f, dir), "utf8")).join("\n");
   assert.deepEqual(shape(migrations), shape(readFileSync(new URL("../schema.sql", import.meta.url), "utf8")));
 });
+
+test("your hands: a finished game opens hand by hand for the player who finished it and for no one else", async () => {
+  const { call } = setup();
+  const t0 = await call("/api/game");
+  const a = await call("/api/act", { body: mv(t0, first(t0.view)) });
+  const { t, cookie } = await playThrough(call, a.cookie);
+  const q = `/api/hands?daily=${t.daily ? 1 : 0}&n=${t.game}`;
+  const mine = await call(q, { cookie });
+  assert.equal(mine.status, 200);
+  assert.equal(mine.hands.length, t.view.history.length);
+  for (const [i, h] of mine.hands.entries()) {
+    assert.equal(h.no, i);
+    assert.ok(h.tricks.length >= 1 && h.tricks.every((x) => x.plays.length >= 1 && Number.isInteger(x.winner)));
+    assert.ok(h.bids.length >= 4 && h.final.length === 4);
+  }
+  // the ledger marks only your own entry
+  const led = await call("/api/ledger?limit=5", { cookie });
+  assert.equal(led.entries.find((e) => e.kind === (t.daily ? "daily" : "result")).mine, true);
+  const stranger = await call("/api/ledger?limit=5");
+  assert.ok(stranger.entries.every((e) => !e.mine));
+  // no one else can open it: nobody logged in, or another player
+  assert.equal((await call(q)).status, 404);
+  const other = await call("/api/game", { ip: "5.6.7.8" });
+  const o = await call("/api/act", { body: mv(other, first(other.view)), ip: "5.6.7.8" });
+  assert.equal((await call(q, { cookie: o.cookie, ip: "5.6.7.8" })).status, 404);
+  // a game you haven't finished is refused too
+  const next = await call("/api/play", { body: {}, cookie });
+  assert.equal((await call(`/api/hands?daily=${next.daily ? 1 : 0}&n=${next.game}`, { cookie })).status, 404);
+});

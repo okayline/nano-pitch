@@ -3,6 +3,7 @@
 // that are from today come back with no record (hidden until the day is over), so for them only the link to the entry before is checked.
 import { verifyChain } from "./chain.js";
 import { VERSION } from "./version.js";
+import { suitOf, rankOf } from "./engine/pitch.js";
 
 const $ = (id) => document.getElementById(id);
 const SPOT = ["You", "lagspike", "mogger99", "tiltproof"];   // the same names the game uses (app.js)
@@ -17,6 +18,25 @@ const when = (t) => {
 };
 const totals = (t) => t.map((n, s) => `${SPOT[s]} ${n}`).join(" · ");
 let oldest = null;
+const SUIT = ["♣", "♦", "♥", "♠"], RED = [false, true, true, false], RANK = { 10: "10", 11: "J", 12: "Q", 13: "K", 14: "A" };
+const seats = new Map();   // entry id -> the four names at that table, for the hands you can open
+const cardTxt = (c) => `<span class="ct${RED[suitOf(c)] ? " r" : ""}">${RANK[rankOf(c)] || rankOf(c)}${SUIT[suitOf(c)]}</span>`;
+const signed = (n) => (n > 0 ? "+" + n : String(n));
+
+// One of your finished games, hand by hand: the bids, then each trick (who played what, and who took it), then High, Low, Jack, Game and the hand's scores.
+function handsHtml(hands, names) {
+  const nm = (s) => esc(names[s]);
+  return [...hands].reverse().map((h) => {   // the newest round first
+    const bids = h.bids.map((b) => `${nm(b.seat)} ${b.forced ? "stuck 2" : b.bid ? b.bid : "pass"}`).join(" · ");
+    const tricks = h.tricks.map((t, i) => `<div>${i + 1}. ${t.plays.map((p) => `${nm(p.seat)} ${cardTxt(p.card)}`).join(" · ")} → <b>${nm(t.winner)}</b></div>`).reverse().join("");   // the newest trick first
+    const pick = (x) => (x ? `${nm(x.seat)} ${cardTxt(x.card)}` : "not in play");
+    const game = h.gameWinner === null ? "tied" : `${nm(h.gameWinner)} ${h.gameTotals[h.gameWinner]}`;
+    return `<div><b>Round ${h.no + 1}: ${nm(h.pitcher)} bid ${h.bid} in <span class="${RED[h.trump] ? "r" : ""}">${SUIT[h.trump]}</span> and ${h.made ? "made it" : "got set"}</b>
+      <div>Bids: ${bids}</div>${tricks}
+      <div>High ${pick(h.high)} · Low ${pick(h.low)} · Jack ${pick(h.jack)} · Game ${game}</div>
+      <div>${h.final.map((n, s) => `${nm(s)} ${signed(n)}`).join(" · ")}</div></div>`;
+  }).join("");
+}
 
 function row(e) {
   let ic, what, sub = "";
@@ -39,6 +59,7 @@ function row(e) {
     const f = e.field;
     if (f && f.games > 0) sub += `<br>${esc(f.games)} player${f.games === 1 ? "" : "s"} ${f.games === 1 ? "has" : "have"} finished it so far · ${Math.round((100 * f.places[0]) / f.games)}% beat the table · ${(f.hands / f.games).toFixed(1)} rounds on average`;
     sub += `<br>moves ${full(r.moves)}`;
+    if (e.mine) { seats.set(e.id, ["You", ...(e.table || []).map((t) => t.name)]); sub += `<br><button class="link" type="button" data-hands="${daily ? 1 : 0}" data-n="${esc(daily ? r.daily : r.game)}" data-id="${e.id}">Show hands</button>`; }
   } else if (e.record === null) {
     ic = "🔒";
     what = `A ${e.kind === "practice" ? "practice game" : e.kind === "hand" ? "round" : "game"} on ${esc(e.day)}`;
@@ -56,7 +77,7 @@ function row(e) {
     }
   }
   return `<li class="entry${e.record === null ? " hidden" : ""}"><span class="ic">${ic}</span><span class="what">${what}</span>
-    <span class="sub">${sub}<br>hash ${full(e.hash)}<br><span class="h">#${e.id} · ${when(e.created_at)}</span></span></li>`;
+    <span class="sub">${sub}<br>hash ${full(e.hash)}<br><span class="h">#${e.id} · ${when(e.created_at)}</span></span><div class="hands" hidden></div></li>`;
 }
 
 async function page() {
@@ -81,5 +102,14 @@ $("check").addEventListener("click", async () => {
     : `All ${all.length} entries link up${v.hidden ? `, and every hash checks out except today's ${v.hidden} hidden one${v.hidden === 1 ? "" : "s"} (linked, not rehashed)` : ", and every hash checks out"}.`;
 });
 $("more").addEventListener("click", page);
+$("entries").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("[data-hands]");
+  if (!b) return;
+  const box = b.closest("li").querySelector(".hands");
+  if (!box.hidden) { box.hidden = true; b.textContent = "Show hands"; return; }
+  const r = await (await fetch(`/api/hands?daily=${b.dataset.hands}&n=${b.dataset.n}`)).json().catch(() => ({ error: "That didn't work. Try again." }));
+  box.innerHTML = r.error ? esc(r.error) : handsHtml(r.hands, seats.get(Number(b.dataset.id)));
+  box.hidden = false; b.textContent = "Hide hands";
+});
 $("ver").textContent = VERSION;
 page();
