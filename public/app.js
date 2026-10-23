@@ -375,7 +375,7 @@ function finalScreen() {
   const v = T.view, f = T.field, place = v.place;
   const winner = v.totals.indexOf(Math.max(...v.totals));
   const headline = `${esc(nameOf(winner).toUpperCase())} WINS`;
-  const sub = place === 1 ? `first to ${v.target} in ${v.history.length} rounds` : `<span class="winname">${tag(winner)}</span>got there first · you placed ${ORD[place]}`;
+  const sub = place === 1 ? `first to ${v.target} in ${v.history.length} rounds` : `got there first · you placed ${ORD[place]}`;
   // Every round for every seat: a row each (the seat's emoji, total, then one bubble a round). The bubbles keep one size and the rounds scroll
   // sideways when there are more than fit; the emoji and the total stay put on the left.
   const bub = (n) => `<span class="chip ${n > 0 ? "up" : n < 0 ? "down" : ""}">${signed(n)}</span>`;
