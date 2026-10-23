@@ -4,6 +4,11 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.11.3
+**Fri Oct 23, 2026**
+
+- Explanation text: taken off the result screen, the Account page and the ledger page. Removed: the line "The table hasn't seen enough rounds like these yet." on the result screen; the paragraph on the Account page about guests, "Logged in on N devices" and save codes (with its "No player here yet", "Guest" and "A save code or passkey brings your game to another device" sentences); and the paragraph at the top of the ledger page explaining the chain.
+
 ## v0.11.2
 **Fri Oct 23, 2026**
 

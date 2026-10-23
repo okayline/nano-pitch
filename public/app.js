@@ -485,7 +485,7 @@ function finalScreen() {
   const botBids = v.history.flatMap((h) => h.bids.filter((b) => b.seat !== HUMAN && !b.forced));
   const followed = [1, 2, 3].map((s) => ({ s, n: botBids.filter((b) => b.seat === s && b.crowd).length })).filter((x) => x.n);
   const memory = `<div class="panel"><div class="kv"><span>The table's memory</span><span>${botBids.filter((b) => b.crowd).length} of ${botBids.length} bot bids went with the crowd</span></div>
-      ${followed.length ? `<div class="small">${followed.map((x) => `${tag(x.s)} ${x.n}`).join(" · ")}</div>` : `<div class="small">The table hasn't seen enough rounds like these yet.</div>`}</div>`;
+      ${followed.length ? `<div class="small">${followed.map((x) => `${tag(x.s)} ${x.n}`).join(" · ")}</div>` : ""}</div>`;
   const buttons = `<button class="go" data-k="play">${T.next && T.next.kind === "daily" ? "Play today's Daily game" : "Play"}</button>`;
   return header() + `
     <div class="panel"><p class="hint" style="margin:0">${sub}</p></div>
@@ -508,10 +508,6 @@ function accountScreen() {
         <div class="big" style="font-size:22px;text-align:left">${a.player ? `${esc(a.name || myName || "player " + a.id)}'s account` : "ACCOUNT"}</div>
       </div>
       ${a.player ? `<p class="small" style="margin:6px 0 0">Tap your pic for a new one.</p>` : ""}
-      <p class="small">${!a.player ? "No player here yet: play a card, or log in below."
-        : a.codes.length || a.passkeys.length ? `<b class="up">Logged in</b> on ${a.devices} device${a.devices === 1 ? "" : "s"}.`
-        : `<b>Guest:</b> no save code or passkey yet, so this player lives only in this browser.`}
-        A save code or passkey brings your game to another device.</p>
       ${a.player ? `<div class="row" style="margin-bottom:12px"><button class="ghost" style="flex:1" data-k="name">Reroll name</button><button class="ghost" style="flex:1" data-k="out">Log out</button></div>` : ""}
       ${newCode ? `<div class="kv"><span>New save code</span><span class="code">${esc(newCode)}</span></div>
         <div class="row" style="margin-bottom:8px"><button class="ghost" style="flex:1" data-k="copy">Copy</button><button class="ghost" style="flex:1" data-k="dl">Download</button></div>
