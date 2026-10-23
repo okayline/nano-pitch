@@ -42,7 +42,8 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .score .pt { font-family: var(--meme); font-size: 22px; line-height: 1; }
 .score.you { border-color: var(--a); box-shadow: 0 0 12px rgba(176,132,255,.4); }
 .score.lost { filter: grayscale(1); }   /* the game is over: everyone but the winner goes black and white */
-.winname .tag { font-size: 1.45em; }   /* the winner's name under the headline, bigger */
+.winname { display: block; margin-bottom: 2px; }   /* the winner's name on a line of its own under the headline, bigger, then what happened under it */
+.winname .tag { font-size: 1.6em; }
 .score.lead .pt { text-shadow: 0 0 10px var(--b); }
 .bar { height: 6px; border-radius: 999px; background: var(--panel); overflow: hidden; margin-top: 6px; }
 .bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--a), var(--b)); }

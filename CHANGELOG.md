@@ -17,6 +17,7 @@ Newest first. Times are Hawaii time (HST).
 - Ledger: each finished game shows the player's name (their random one, as it is now; "Player N" if they have none), the four totals with the table's names best first, the game's field so far (players finished, % who beat the table, average rounds) and the Daily game's day. Removed: the old fixed table names (lagspike...) on those rows, and the bare "Player N" with only totals.
 - Result screen: everyone but the winner goes black and white on the scoreboard, and the winner's name under the headline is bigger. Removed: the colour on the losers' cards, and the smaller name.
 - Result screen: "Your score each round" is now a grid of all four seats, a row each with the total, one bubble a round; the bubbles keep their size and it scrolls sideways when the game is long. Removed: the row of only your scores. The left column is just each seat's emoji (no name), and the grid has no "Each round" or "Total" words over it.
+- Result screen: the winner's name under the headline sits on its own line, then "got there first · you placed 2nd" under it (they ran together and wrapped). Removed: the name sharing a line with that text.
 - Registry: each checkpoint now carries the finished game's public facts (kind, number, day, rounds, place, score, bids, trumps). Removed: the bare checkpoint with no facts.
 
 ---
