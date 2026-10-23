@@ -21,16 +21,19 @@ function row(e) {
     what = `<b>${esc(r.day)}</b>: the day's deal was fixed`;
     sub = `seed hash ${short(r.seed_hash)}` + (r.memory_hash ? ` · table memory ${short(r.memory_hash)}` : "")
       + (e.seed ? `<br>seed ${short(e.seed)} (the day is over: anyone can rebuild its deals)` : "<br>seed shown once the day is over");
-  } else if (e.kind === "result") {
-    const r = JSON.parse(e.record);
-    ic = r.place === 1 ? "🏆" : "🃏";
-    what = `Player ${esc(r.player)} ${r.place === 1 ? "beat the table" : "placed " + ORD[r.place]} in game #${esc(r.game)}`;
-    sub = `${esc(r.hands)} rounds · You ${esc(r.totals[0])} · the table ${esc(r.totals.slice(1).join(" · "))}<br>moves ${short(r.moves)}`;
-  } else if (e.kind === "daily") {
-    const r = JSON.parse(e.record);
-    ic = r.place === 1 ? "👑" : "☀️";
-    what = `Player ${esc(r.player)} ${r.place === 1 ? "beat the table" : "placed " + ORD[r.place]} in Daily game #${esc(r.daily)} (${esc(r.day)})`;
-    sub = `${esc(r.hands)} rounds · You ${esc(r.totals[0])} · the table ${esc(r.totals.slice(1).join(" · "))}<br>moves ${short(r.moves)}`;
+  } else if (e.kind === "result" || e.kind === "daily") {
+    const r = JSON.parse(e.record), daily = e.kind === "daily";
+    ic = r.place === 1 ? (daily ? "👑" : "🏆") : daily ? "☀️" : "🃏";
+    const who = `${e.pfp ? esc(e.pfp) + " " : ""}<b>${e.name ? esc(e.name) : "Player " + esc(r.player)}</b>`, game = daily ? `Daily game #${esc(r.daily)}` : `game #${esc(r.game)}`;
+    what = `${who} ${r.place === 1 ? "beat the table" : "placed " + ORD[r.place]} in ${game}`;
+    // the four finals, best first: the player, then the table's three (their names come from the game's seed)
+    const names = [e.name || "Player " + r.player, ...(e.table || []).map((t) => t.name)];
+    const finals = r.totals.map((t, s) => ({ s, t, n: names[s] || SPOT[s] })).sort((x, y) => y.t - x.t || x.s - y.s)
+      .map((x) => `<span class="${x.s === 0 ? "you" : ""}">${esc(x.n)} <b>${esc(x.t)}</b></span>`).join(" · ");
+    sub = (daily ? `${esc(r.day)} · ` : "") + `${esc(r.hands)} rounds · first to 11<br>${finals}`;
+    const f = e.field;
+    if (f && f.games > 0) sub += `<br>${esc(f.games)} player${f.games === 1 ? "" : "s"} ${f.games === 1 ? "has" : "have"} finished it so far · ${Math.round((100 * f.places[0]) / f.games)}% beat the table · ${(f.hands / f.games).toFixed(1)} rounds on average`;
+    sub += `<br>moves ${short(r.moves)}`;
   } else if (e.record === null) {
     ic = "🔒";
     what = `A ${e.kind === "practice" ? "practice game" : e.kind === "hand" ? "round" : "game"} on ${esc(e.day)}`;
@@ -63,7 +66,7 @@ $("check").addEventListener("click", async () => {
   $("checked").textContent = "Checking…";
   const all = [];
   for (let before = ""; ;) {
-    const { entries } = await (await fetch("/api/ledger?limit=100" + before)).json();
+    const { entries } = await (await fetch("/api/ledger?limit=100&plain=1" + before)).json();
     all.push(...entries);
     if (entries.length < 100) break;
     before = "&before=" + entries[entries.length - 1].id;

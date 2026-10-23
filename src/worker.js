@@ -9,7 +9,7 @@
 //                                      n is how many moves the page has seen (a move from a stale tab is refused). The
 //                                      server replays the game's deals plus your moves and plays the bots. The move that ends
 //                                      the game seals it on the ledger and adds it to the field. New players: 3 an hour per address.
-//   GET  /api/ledger?before=ID&limit=N the chain, newest first (N up to 100). Entries from before v0.9 (kinds day, game,
+//   GET  /api/ledger?before=ID&limit=N the chain, newest first (N up to 100; plain=1 for the sealed entries alone). Entries from before v0.9 (kinds day, game,
 //                                      practice, hand): today's are hidden (everyone held the same cards); a past day's entry
 //                                      also shows its seed. Results (kind 'result') are public: a game's number, who finished,
 //                                      the totals, and a hash of their moves, never the deal or the cards.
@@ -29,7 +29,7 @@ import { entryInsert, seal, sha256 } from "./ledger.js";
 import { giveName } from "./names.js";
 import { dailySeed, gameSeed, dailyNo, dayOfDaily, utcDay } from "../engine/daily.js";
 import { verifyTip } from "../public/chain.js";
-import { HUMAN, PFP_POOL, SUITS, startGame, actGame, replayGame, viewGame } from "../public/engine/pitch.js";
+import { HUMAN, PFP_POOL, SUITS, castOf, startGame, actGame, replayGame, viewGame } from "../public/engine/pitch.js";
 
 const GAME = "nano-pitch";
 const COOKIE = "np";
@@ -254,17 +254,38 @@ async function postAct(ctx) {
   return { ...(await answer(env, { ...cur, rows: cur.rows || { daily: null, game: null } }, moves, next)), hash: sealed.hash };
 }
 
+// The chain, newest first. Finished games (kinds 'result' and 'daily') come with what the page shows beside the sealed record, none
+// of it part of any hash: the player's name (a random name they were given, shown as it is now; none yet: null), the table's three
+// names (drawn from the game's seed, as the game does), and how the game's field stands. Never the cards or the moves: everyone who
+// plays game N holds the same deal. `plain=1` leaves all that out (the page's chain check only needs the sealed entries).
 async function ledger(ctx) {
-  const url = new URL(ctx.req.url), day = utcDay(), env = ctx.env;
+  const url = new URL(ctx.req.url), day = utcDay(), env = ctx.env, plain = url.searchParams.get("plain") === "1";
   const before = Number(url.searchParams.get("before")) || Number.MAX_SAFE_INTEGER;
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 30));
   const { results } = await env.DB.prepare("SELECT id, kind, day, record, prev_hash, hash, created_at FROM pitch_ledger WHERE id < ? ORDER BY id DESC LIMIT ?").bind(before, limit).all();
-  const key = results.some((e) => e.kind === "day" && e.day < day) ? await secret(env) : null;
+  const finished = (e) => e.kind === "result" || e.kind === "daily";
+  const key = results.some((e) => (e.kind === "day" && e.day < day) || (!plain && finished(e))) ? await secret(env) : null;
+  const recs = new Map(results.filter(finished).map((e) => [e.id, JSON.parse(e.record)]));
+  const names = new Map(), fields = { result: new Map(), daily: new Map() };
+  if (!plain && recs.size) {
+    const ids = [...new Set([...recs.values()].map((r) => r.player))];
+    for (const r of (await env.DB.prepare(`SELECT id, name, pfp FROM pitch_players WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all()).results) names.set(r.id, r);
+    for (const kind of ["result", "daily"]) {
+      const ns = [...new Set(results.filter((e) => e.kind === kind).map((e) => (kind === "daily" ? recs.get(e.id).daily : recs.get(e.id).game)))];
+      if (!ns.length) continue;
+      const rows = (await env.DB.prepare(`SELECT n, games, hands, place_1, place_2, place_3, place_4 FROM ${KINDS[kind === "daily" ? "daily" : "game"].deals} WHERE n IN (${ns.map(() => "?").join(",")})`).bind(...ns).all()).results;
+      for (const r of rows) fields[kind].set(r.n, { games: r.games, hands: r.hands, places: [r.place_1, r.place_2, r.place_3, r.place_4] });
+    }
+  }
   const entries = [];
   for (const e of results) {
     if (!["day", "result", "daily"].includes(e.kind) && e.day >= day) entries.push({ ...e, record: null });   // from before v0.9: today's games (and older hands) are shown once the day is over
     else if (e.kind === "day" && e.day < day) entries.push({ ...e, seed: await dailySeed(key, e.day) });
-    else entries.push(e);
+    else if (!plain && finished(e)) {
+      const r = recs.get(e.id), daily = e.kind === "daily", p = names.get(r.player);
+      const seed = daily ? await dailySeed(key, r.day) : await gameSeed(key, r.game);
+      entries.push({ ...e, name: p ? p.name : null, pfp: p ? p.pfp : null, table: castOf(seed).slice(1).map((c) => ({ name: c.name, pfp: c.pfp })), field: fields[e.kind].get(daily ? r.daily : r.game) ?? null });
+    } else entries.push(e);
   }
   return { entries };
 }

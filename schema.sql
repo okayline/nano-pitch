@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS pitch_ledger (
   id          INTEGER PRIMARY KEY,
   kind        TEXT NOT NULL,          -- result | daily | day | game | practice | hand (the last four only from before v0.9)
   day         TEXT NOT NULL,          -- the UTC day it was sealed
-  player_id   INTEGER,                -- game, result and daily entries only; never published as a name
+  player_id   INTEGER,                -- game, result and daily entries only; the page shows the player's current random name beside it (pitch_players.name), never a typed one
   record      TEXT NOT NULL,          -- the sealed JSON record
   prev_hash   TEXT NOT NULL UNIQUE,   -- one entry per chain head: the chain can't fork
   hash        TEXT NOT NULL UNIQUE,   -- SHA-256(prev_hash + "|" + record)

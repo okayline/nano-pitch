@@ -9,7 +9,7 @@ const SUIT = ["♣", "♦", "♥", "♠"];
 const RED = [false, true, true, false];
 const RANK = { 10: "10", 11: "J", 12: "Q", 13: "K", 14: "A" };
 const ORD = ["", "1st", "2nd", "3rd", "4th"];
-const ICON = { table: "🤖", high: "👑", low: "🪶", jack: "🃏", game: "🎯", bid: "🔥" };
+const ICON = { table: "🤖", high: "👑", low: "🪶", jack: "🃏", game: "🎯" };
 
 const $app = document.getElementById("app");
 
@@ -117,6 +117,15 @@ function frame({ h, base, tmpl, k, evs, stage }) {
   };
 }
 
+// The chat keeps going while a finished round's card is up: one more line (see moveLines, `after`) every second or so, until the
+// card is closed.
+function chatOn() {
+  afterN = 0;
+  const mine = ++afterRun;
+  if (!pending()) return;
+  for (let n = 1; n <= 4; n++) setTimeout(() => { if (afterRun === mine && !rp && pending()) { afterN = n; liveChat = true; draw(); liveChat = false; } }, 1000 * n + ((n * 370) % 500));
+}
+
 // Plays hand h back from move `from` to its end, then calls `then`. The player's own move shows at once.
 function replay(h, base, from, tmpl, then) {
   const evs = events(h);
@@ -135,7 +144,7 @@ function replay(h, base, from, tmpl, then) {
     const jit = (salt) => ([...`${tmpl.no}|${k}|${salt}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7) >>> 3) % 1000 / 1000;
     const at = (stage, from, span) => setTimeout(() => { if (rp === run && run.k === k) { run.stage = stage; draw(); } }, wait * (from + span * jit(stage)));
     at(1, 0.12, 0.28); at(2, 0.42, 0.18); at(3, 0.68, 0.17);
-    setTimeout(() => { if (rp !== run) return; if (run.k >= evs.length) { frozen = frame({ ...run, k: evs.length, stage: 3 }); rp = null; then(); } else step(); }, wait);
+    setTimeout(() => { if (rp !== run) return; if (run.k >= evs.length) { frozen = frame({ ...run, k: evs.length, stage: 3 }); rp = null; then(); chatOn(); } else step(); }, wait);
   };
   if (evs[from].seat === HUMAN && !evs[from].skip) step(); else { draw(); setTimeout(step, PACE.move); }
 }
@@ -154,6 +163,7 @@ const playFromStart = () => { const v = T.view; if (!v.over) replay(v, v.hand, 0
 // like a stream's chat: a new line slides in from below, the older ones slide up, and the oldest fades out.
 const FEED = 7;
 let fed = 0;   // how many lines the feed held the last time the table was drawn
+let afterN = 0, afterRun = 0, liveChat = false;   // while a round's card is up: how many of the chat's lines after the round have come, which card they belong to, and whether this draw adds one
 const cardTxt = (c) => `<span class="ct${RED[suitOf(c)] ? " r" : ""}">${rk(c)}${SUIT[suitOf(c)]}</span>`;
 function moveLines(v) {
   const nm = (s) => `${pfp(s)} ${tag(s)}`;
@@ -172,7 +182,8 @@ function moveLines(v) {
   const REACT = { big: ["nr", "nt", "oof", "rip", "ez", "💀", "😭", "🔥", "😬"], plain: ["nr", "nt", "gg", "lol", "hm", "👀", "🫡", "😮"] };   // what the chatters say about a trick
   // What the bots say about the bidding and about how a round ended: someone bidding 4, the bidder making it or getting set.
   const CHIME = { bold: ["bold", "😳", "oh ok", "???", "🫣"], made_self: ["ez", "W", "easy", "💪", "told u"], set_self: ["rip", "oof", "💀", "bruh", "😭"],
-    made_other: ["nice", "gg", "ok ok", "👀", "damn"], set_other: ["lol", "L", "😬", "oof", "rip"] };
+    made_other: ["nice", "gg", "ok ok", "👀", "damn"], set_other: ["lol", "L", "😬", "oof", "rip"],
+    then: ["fr", "ngl", "real", "lmao", "true", "clean", "classic", "bruh", "ok next"] };   // what the viewers add while the round's card is up
   const chatter = (i) => VIEWER + (spin(i, 3, "who") % VIEWERS);   // one of the viewers, who comment on what the table does
   const chime = (kind, i) => CHIME[kind][spin(i, 6, kind) % CHIME[kind].length];
   const word = (kind, i, s) => WORDS[kind][spin(i, s, kind) % WORDS[kind].length];
@@ -197,20 +208,24 @@ function moveLines(v) {
       }
     }
   }
-  // How the round ended, once its last move is shown: the bidder (or the chatters, if it was you) say something about it.
+  // How the round ended, once its last move is shown. These lines (post 1, 2, 3...) come one at a time while the round's card is up
+  // (`after` is how many have come), so the chat keeps going under it: the bidder, the viewers, then a follow-up or two.
   if (typeof v.made === "boolean" && v.pitcher !== null) {
     const last = mv - 1, kind = v.made ? "made" : "set", roll = (n) => spin(E.length, n, "end") % 100;
+    let post = 0;
     if (v.pitcher !== HUMAN) {
-      if (roll(11) < 65) E.push([v.pitcher, chime(kind + "_self", E.length), last, 2, true]);
-      if (roll(12) < (v.made ? 35 : 55)) E.push([chatter(E.length), chime(kind + "_other", E.length), last, 2, true]);
-    } else if (roll(13) < 70) E.push([chatter(E.length), chime(kind + "_other", E.length), last, 2, true]);
+      if (roll(11) < 65) E.push([v.pitcher, chime(kind + "_self", E.length), last, 2, true, ++post]);
+      if (roll(12) < (v.made ? 35 : 55)) E.push([chatter(E.length), chime(kind + "_other", E.length), last, 2, true, ++post]);
+    } else if (roll(13) < 70) E.push([chatter(E.length), chime(kind + "_other", E.length), last, 2, true, ++post]);
+    if (roll(14) < 60) E.push([chatter(E.length), chime("then", E.length), last, 2, true, ++post]);
+    if (roll(15) < 35) E.push([chatter(E.length), chime("then", E.length), last, 2, true, ++post]);
   }
   // Now and then a bot posts just an emoji after its move. Which moves and which emoji come from the move's place in the hand, so a replay or reload chats the same.
   const EMOTE = [["😴", "🥱", "💤", "🫠"], ["🗿", "😐", "💀", "🔥"], ["😤", "🥶", "🤬", "🧊"], ["🙂", "😶", "👍", "🤷"]];   // by personality: safe, bold, crowd, none
   const mood = (s, i) => { const h = [...`${v.no}|${i}|${s}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7); return h % 6 === 0 ? EMOTE[v.cast[s].persona ?? 3][(h >> 4) % 4] : null; };
-  return E.flatMap(([s, text, ev, late, played], i) => {
+  return E.flatMap(([s, text, ev, late, played, post], i) => {
     if (s === HUMAN && !played) return [];   // your cards are in the chat; your bids and the lines after them aren't
-    const held = ev === v.hold, shown = !held || late < v.stage;   // while a move is the newest on a replaying table, its lines wait for their stage
+    const held = ev === v.hold, shown = (!held || late < v.stage) && (!post || (v.after ?? 0) >= post);   // while a move is the newest on a replaying table, its lines wait for their stage
     const e = s !== HUMAN && !late && (!held || v.stage > 1) && mood(s, i);   // a bot's own emoji follows its move, not the lines that follow a trick
     return [...(shown ? [`${nm(s)}${played ? ":" : ""} ${text}`] : []), ...(shown && e ? [`${nm(s)}: ${e}`] : [])];
   });
@@ -220,8 +235,8 @@ function moveLines(v) {
 // the page animates those in `chat`. The lines dim towards the top (style.css) but none ever fades away: a line stays until a newer one pushes it off.
 function feedHtml(v) {
   // The chat carries on from round to round: the lines of the rounds before this one come first.
-  const past = T.view.history.filter((h) => h.no < v.no).flatMap((h) => moveLines({ ...h, trick: [], cast: T.view.cast, hold: null }));
-  const L = [...past, ...moveLines(v)], fresh = rp ? L.length - (L.length >= fed ? fed : 0) : 0;
+  const past = T.view.history.filter((h) => h.no < v.no).flatMap((h) => moveLines({ ...h, trick: [], cast: T.view.cast, hold: null, after: Infinity }));
+  const L = [...past, ...moveLines({ ...v, after: afterN })], fresh = rp || liveChat ? L.length - (L.length >= fed ? fed : 0) : 0;
   fed = L.length;
   return `<div class="feed" aria-live="polite" data-fresh="${fresh}">${L.slice(-FEED).map((l) => `<div>${l}</div>`).join("")}</div>`;
 }
@@ -346,9 +361,9 @@ function handPopup(h) {
         ${row(`${ICON.low} Low`, `${who(h.low.seat)} <span class="small">played</span> ${card(h.low.card, "mini")}`)}
         ${row(`${ICON.jack} Jack`, h.jack ? `${who(h.jack.seat)} ${card(h.jack.card, "mini")}` : `<span class="small">not in play</span>`)}
         ${row(`${ICON.game} Game`, h.gameWinner === null ? `<span class="small">tied: nobody</span>` : `${who(h.gameWinner)} <span class="small">${h.gameTotals[h.gameWinner]} card points</span>`)}
-        ${row(`${ICON.bid} Bid`, `${who(h.pitcher)} bid ${h.bid}: ${h.made ? `<b class="up">made it</b>` : `<b class="down">set ${-h.bid}</b>`}`)}
-        ${row("This round", [0, 1, 2, 3].map((s) => `${tag(s)} ${delta(h.final[s])}`).join(" "))}
       </div>
+      <div class="r4h">This round</div>
+      <div class="r4">${[0, 1, 2, 3].map((s) => `<div class="${s === HUMAN ? "you" : ""}"><span class="nm">${s === HUMAN && myName ? `<span class="tag">${esc(myName)}</span>` : tag(s)}</span><span class="d">${delta(h.final[s])}</span></div>`).join("")}</div>
       <button class="go" data-k="go">${last && v.over ? "See the result" : "Next round"}</button>
     </div>`;
 }

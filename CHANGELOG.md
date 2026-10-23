@@ -13,6 +13,8 @@ Newest first. Times are Hawaii time (HST).
 - Scoreboard: each score sits next to its emoji, with the name under them (it was under the name). Removed: the stacked emoji / name / score layout.
 - Chat: more of it, and it reacts to the game. Six viewers who aren't at the table (made-up names, the same six all game) comment on tricks, on a bid of 4 and on how a round ended; the bidder says something when they make it or get set; bots' emoji and trick reactions come a bit more often. Removed: the three bots as the ones commenting on tricks.
 - Chat: spade and club cards ("K♠") are blue. Removed: the plain white for them.
+- Round card: the chat keeps going while it is up (the bidder and the viewers say a few more things, one at a time, above the card), and "This round" is a strip of four boxes, name over score, you outlined. Removed: the one-line "This round" row, and the Bid row (the line under the title already says it).
+- Ledger: each finished game shows the player's name (their random one, as it is now; "Player N" if they have none), the four totals with the table's names best first, the game's field so far (players finished, % who beat the table, average rounds) and the Daily game's day. Removed: the old fixed table names (lagspike...) on those rows, and the bare "Player N" with only totals.
 - Registry: each checkpoint now carries the finished game's public facts (kind, number, day, rounds, place, score, bids, trumps). Removed: the bare checkpoint with no facts.
 
 ---

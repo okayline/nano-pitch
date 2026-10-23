@@ -8,6 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import worker from "../src/worker.js";
 import { startGame, viewGame } from "../public/engine/pitch.js";
 import { dailyNo as dailyNoOf, dayOfDaily } from "../engine/daily.js";
+import { castOf } from "../public/engine/pitch.js";
 
 function fakeD1() {
   const db = new DatabaseSync(":memory:");
@@ -350,6 +351,29 @@ test("the ledger shows results to everyone, and hides today's entries from befor
   assert.equal(old.seed, dailySeedOf(raw, "2000-01-01"));   // a past day's seed is still shown
   const todays = l.entries.find((e) => e.kind === "day" && e.day === today());
   assert.equal("seed" in todays, false);
+});
+
+test("the ledger shows a finished game's player name, the table's names and the field, and plain=1 leaves them out", async () => {
+  const { call, raw } = setup();
+  const { cookie } = await playThrough(call);
+  const entry = raw.prepare("SELECT * FROM pitch_ledger").get();
+  let l = await call("/api/ledger");
+  assert.equal(l.entries[0].name, null);   // no name yet: the page says "Player N"
+  raw.prepare("UPDATE pitch_players SET name = 'Test Name', pfp = '🐸' WHERE id = ?").run(entry.player_id);
+  l = await call("/api/ledger");
+  const e = l.entries[0];
+  assert.equal(e.record, entry.record);   // the sealed record is untouched
+  assert.equal(e.hash, entry.hash);
+  assert.equal(e.name, "Test Name");
+  assert.equal(e.pfp, "🐸");
+  assert.deepEqual(e.table.map((c) => c.name), castOf(dailySeedOf(raw, today())).slice(1).map((c) => c.name));   // the same three the game seated
+  const deal = raw.prepare("SELECT * FROM pitch_daily_deals").get();
+  assert.deepEqual(e.field, { games: 1, hands: deal.hands, places: [deal.place_1, deal.place_2, deal.place_3, deal.place_4] });
+  const plain = (await call("/api/ledger?plain=1")).entries[0];
+  assert.equal(plain.record, entry.record);
+  assert.equal("name" in plain, false);
+  assert.equal("table" in plain, false);
+  assert.ok(cookie);
 });
 
 test("new players: 3 an hour from one address", async () => {
