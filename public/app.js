@@ -228,7 +228,7 @@ function scoreboard(v) {
   const cell = (seat) => {
     const t = v.totals[seat], pct = Math.min(t < 0 ? 120 : 100, (100 * Math.abs(t)) / v.target);   // below zero the bar runs left, out of its frame
     return `<div class="score${seat === HUMAN ? " you" : ""}${v.totals[seat] === top && top > 0 ? " lead" : ""}">
-      <div class="em">${pfp(seat)}</div><div class="nm">${seat === HUMAN && myName ? `<span class="tag">${esc(myName)}</span>` : tag(seat)}</div><div class="pt">${t}</div><div class="bar${t < 0 ? " neg" : ""}"><i style="width:${pct.toFixed(1)}%"></i></div></div>`;
+      <div class="top"><div class="em">${pfp(seat)}</div><div class="pt">${t}</div></div><div class="nm">${seat === HUMAN && myName ? `<span class="tag">${esc(myName)}</span>` : tag(seat)}</div><div class="bar${t < 0 ? " neg" : ""}"><i style="width:${pct.toFixed(1)}%"></i></div></div>`;
   };
   return `<div class="panel"><div class="scores">${[0, 1, 2, 3].map(cell).join("")}</div></div>`;
 }

@@ -38,7 +38,8 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .score { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 4px; text-align: center; }
 .score .em { font-size: 20px; line-height: 1; }
 .score .nm { font-size: 11px; color: var(--mute); margin-top: 3px; }
-.score .pt { font-family: var(--meme); font-size: 22px; margin-top: 2px; }
+.score .top { display: flex; align-items: center; justify-content: center; gap: 6px; }   /* the emoji and the score side by side, the name under them */
+.score .pt { font-family: var(--meme); font-size: 22px; line-height: 1; }
 .score.you { border-color: var(--a); box-shadow: 0 0 12px rgba(176,132,255,.4); }
 .score.lead .pt { text-shadow: 0 0 10px var(--b); }
 .bar { height: 6px; border-radius: 999px; background: var(--panel); overflow: hidden; margin-top: 6px; }

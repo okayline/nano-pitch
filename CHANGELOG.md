@@ -10,6 +10,7 @@ Newest first. Times are Hawaii time (HST).
 - Daily game: once a UTC day, after the game you're in, you play that day's Daily game: the same cards and the same bots for everyone (Daily game #1 is today; the number goes up one each UTC day). It's counted on its own: "game #14, Daily game #2, game #15". It never interrupts a game in progress. Added: Daily games, their own field and results tally each day, a 'daily' entry on the ledger, and its row on the ledger page. Removed: nothing from numbered games.
 - Fixed: when it came to your turn the arrow and "your bid" went blank for a moment and then came back. They now stay on you from the last bot's move. Removed: the blank moment.
 - Table: the cards of a finished trick no longer dim; only the winner's glow stays. Removed: the dimming of the trick's other cards.
+- Scoreboard: each score sits next to its emoji, with the name under them (it was under the name). Removed: the stacked emoji / name / score layout.
 - Registry: each checkpoint now carries the finished game's public facts (kind, number, day, rounds, place, score, bids, trumps). Removed: the bare checkpoint with no facts.
 
 ---
