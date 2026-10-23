@@ -4,6 +4,16 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.7 — "Slow Hand"
+**Thu Oct 22, 2026**
+
+- The table's moves play out one at a time: after your move, each bid and card shows on its own (1.3 seconds apart), and a finished trick stays on the table with the winning card lit (2.75 seconds) then the table clears before the next one starts or it is your lead. The last trick of a hand plays out before the hand's result, and the bids before yours play out at the start of each hand. Taps and keys wait until the moves have played.
+- A move list under your hand: every bid, card and trick of the hand so far, newest at the bottom.
+- The PASS and bid buttons sit under the table, above the bidder line. The bidder line shows the bidder, the bid and the trump suit together.
+- Removed: the Trump chip on the table screen (the suit is on the bidder line now; the hand result screen still shows trump), and the jump straight from your move to the table after every bot had played.
+
+---
+
 ## v0.6 — "Open Book"
 **Wed Oct 21, 2026**
 

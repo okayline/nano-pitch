@@ -48,6 +48,77 @@ function stamp(day) {
   return new Date(day + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+// ---------- replay: the moves one at a time ----------
+// The server answers a move with the table after every bot has played. The page plays the new bids and cards back one at a
+// time from what it already showed. A hand's moves in order are its bids, then every card of its finished tricks, then the
+// trick on the table; a finished hand's come from its summary in `history`.
+
+export const PACE = { move: 1300, trick: 2750 };   // ms after a bid or card, and after the card that ends a trick
+let rp = null;   // the replay on screen: { h, base, tmpl, k, evs }
+
+const progress = (v) => v.bids.length + 4 * v.tricks.length + v.trick.length;
+const events = (h) => [...h.bids.map((b) => ({ seat: b.seat })), ...h.tricks.flatMap((t) => t.plays), ...(h.trick || [])];
+
+// The table after the first k moves of hand h. `base` is the player's cards before any of the replayed moves; `tmpl` gives
+// everything that isn't the hand's moves (totals, hand number, dealer).
+function frame({ h, base, tmpl, k, evs }) {
+  const nb = Math.min(k, h.bids.length), plays = evs.slice(h.bids.length, Math.max(h.bids.length, k));
+  const full = Math.floor(plays.length / 4), counts = [6, 6, 6, 6], mine = [];
+  for (const p of plays) { counts[p.seat]--; if (p.seat === HUMAN) mine.push(p.card); }
+  const settled = nb === 4;
+  return {
+    ...tmpl, dealer: h.dealer, bids: h.bids.slice(0, nb), tricks: h.tricks.slice(0, full), trick: plays.slice(full * 4),
+    counts, hand: base.filter((c) => !mine.includes(c)), phase: settled ? "play" : "bid",
+    pitcher: settled ? h.pitcher : null, bid: settled ? h.bid : 0, trump: plays.length ? suitOf(plays[0].card) : null,
+    turn: k < evs.length ? evs[k].seat : null, legal: null, bidOptions: null,
+  };
+}
+
+// Plays hand h back from move `from` to its end, then calls `then`. The player's own move shows at once.
+function replay(h, base, from, tmpl, then) {
+  const evs = events(h);
+  if (from >= evs.length) { rp = null; return then(); }
+  rp = { h, base, tmpl, k: from, evs };
+  const run = rp;
+  const step = () => {
+    if (rp !== run) return;
+    run.k++; draw();
+    const p = run.k > h.bids.length ? run.k - h.bids.length : 0;   // cards played so far
+    const wait = p && p % 4 === 0 ? PACE.trick : PACE.move;
+    setTimeout(() => { if (rp !== run) return; if (run.k >= evs.length) { rp = null; then(); } else step(); }, wait);
+  };
+  if (evs[from].seat === HUMAN) step(); else { draw(); setTimeout(step, PACE.move); }
+}
+
+// After a move: play back what changed between the table as it was (`old`) and the server's answer (`now`).
+function playBack(old, now) {
+  if (now.history.length > old.history.length) {   // the move ended a hand: finish it, then its result screen shows
+    const s = now.history[old.history.length];
+    return replay({ dealer: s.dealer, bids: s.bids, tricks: s.tricks, trick: [], pitcher: s.pitcher, bid: s.bid }, old.hand, progress(old), old, draw);
+  }
+  replay(now, old.hand, progress(old), now, draw);
+}
+const playFromStart = () => { const v = T.view; if (!v.over) replay(v, v.hand, 0, v, draw); else draw(); };
+
+// The moves of the hand on screen, as text.
+const cardTxt = (c) => `<span class="ct${RED[suitOf(c)] ? " r" : ""}">${rk(c)}${SUIT[suitOf(c)]}</span>`;
+function moveLines(v) {
+  const you = (s) => s === HUMAN, nm = (s) => (you(s) ? "<b>You</b>" : tag(s)), es = (s, a, b) => (you(s) ? a : b);
+  const L = v.bids.map((b) => b.forced ? `${nm(b.seat)} ${es(b.seat, "are", "is")} stuck with 2`
+    : b.bid ? `${nm(b.seat)} ${es(b.seat, "bid", "bids")} ${b.bid}` : `${nm(b.seat)} ${es(b.seat, "pass", "passes")}`);
+  if (v.pitcher !== null) L.push(`${nm(v.pitcher)} ${es(v.pitcher, "have", "has")} the bid at ${v.bid}`);
+  let first = true;
+  for (const t of [...v.tricks, { plays: v.trick, winner: null }]) {
+    for (const p of t.plays) {
+      L.push(first ? `${nm(p.seat)} ${es(p.seat, "lead", "leads")} ${cardTxt(p.card)}: trump is ${SUIT[suitOf(p.card)]}`
+        : `${nm(p.seat)} ${es(p.seat, "play", "plays")} ${cardTxt(p.card)}`);
+      first = false;
+    }
+    if (t.winner !== null) L.push(`${nm(t.winner)} ${es(t.winner, "take", "takes")} the trick`);
+  }
+  return L;
+}
+
 // ---------- drawing ----------
 
 function draw() {
@@ -56,6 +127,8 @@ function draw() {
   $app.innerHTML = { loading: loadingScreen, game: gameScreen, account: accountScreen }[mode]() + `<div class="ver">${esc(VERSION)}</div>`;
   const box = document.getElementById("codein");
   if (box && typed != null) box.value = typed;
+  const log = document.getElementById("log");
+  if (log) log.scrollTop = log.scrollHeight;   // the newest move in view
 }
 
 function header() {
@@ -88,17 +161,20 @@ function bidText(v, seat) {
   return b.bid ? `<span class="chip${seat === v.pitcher ? " hot" : ""}">${ICON.bid} bid ${b.bid}</span>` : `<span class="small">pass</span>`;
 }
 
-// The trick on the table: the current one, or the last finished one (with its winner lit) between tricks.
+// The trick on the table: the current one, or, while moves play out, the last finished one (with its winner lit).
 function tableTrick(v) {
   if (v.trick.length) return { plays: v.trick, done: false };
+  if (!rp) return { plays: [], done: false };   // the pause is over: the table is clear for the next lead
   const last = v.tricks[v.tricks.length - 1];
   return last ? { plays: last.plays, done: true, winner: last.winner } : { plays: [], done: false };
 }
 
 function gameScreen() {
-  const v = T.view;
-  if (pending()) return handScreen(v.history[seen]);
-  if (v.over) return finalScreen();
+  const v = rp ? frame(rp) : T.view;
+  if (!rp) {
+    if (pending()) return handScreen(v.history[seen]);
+    if (v.over) return finalScreen();
+  }
   const tt = tableTrick(v);
   const played = (seat, cls) => {
     const p = tt.plays.find((x) => x.seat === seat);
@@ -109,20 +185,20 @@ function gameScreen() {
       <div class="nm">${PFP[seat]} ${tag(seat)}${dealer(seat)}</div>${backs(v.counts[seat])}<div class="bid">${bidText(v, seat)}</div></div>`;
   const middle = v.phase === "bid" ? `<div class="mid"><span class="bot">${ICON.table}</span><br>bidding</div>` : (tt.plays.length ? "" : `<div class="mid"><span class="bot">${ICON.table}</span></div>`);
 
-  const legal = new Set(v.legal || []), canPlay = v.phase === "play" && v.turn === HUMAN;
+  const legal = new Set(v.legal || []), canPlay = !rp && v.phase === "play" && v.turn === HUMAN;
   const hand = v.hand.map((c) => (canPlay && legal.has(c) ? card(c, "ok", "c" + c) : card(c, canPlay ? "no" : ""))).join("");
 
-  let controls = "";
-  if (v.phase === "bid" && v.turn === HUMAN) {
-    controls = `<div class="bids">${[0, 2, 3, 4].map((b) => `<button data-k="b${b}" ${v.bidOptions.includes(b) ? "" : "disabled"} class="${b === 4 ? "hot" : ""}">${b ? b : "Pass"}</button>`).join("")}</div>`;
+  let controls = "", bidding = "";
+  if (!rp && v.phase === "bid" && v.turn === HUMAN) {
+    bidding = `<div class="bids">${[0, 2, 3, 4].map((b) => `<button data-k="b${b}" ${v.bidOptions.includes(b) ? "" : "disabled"} class="${b === 4 ? "hot" : ""}">${b ? b : "Pass"}</button>`).join("")}</div>`;
   } else if (canPlay) {
     controls = `<p class="hint">${v.trick.length || v.trump !== null ? "Play a card" : "Your lead names trump"}</p>`;
   }
 
   const short = (s) => (s === HUMAN ? "<b>You</b>" : `<span class="tag s${s}">${SPOT[s][0]}</span>`);   // the names are long: initials here
   const tricks = [0, 1, 2, 3].map((s) => `${short(s)} ${v.tricks.filter((t) => t.winner === s).length}`).join(" ");
-  const chips = `<div class="row">${v.trump === null ? `<span class="chip">Trump —</span>` : suitChip(v.trump)}
-      ${v.pitcher === null ? "" : `<span class="chip">Bidder ${tag(v.pitcher)} ${v.bid}</span>`}
+  const trumpTxt = v.trump === null ? "" : ` <b style="color:${RED[v.trump] ? "var(--red)" : "var(--ink)"}">${SUIT[v.trump]}</b>`;
+  const chips = `<div class="row">${v.pitcher === null ? "" : `<span class="chip">Bidder ${tag(v.pitcher)} ${v.bid}${trumpTxt}</span>`}
       <span class="chip">Tricks ${tricks}</span></div>`;
 
   return header() + scoreboard(v) + `
@@ -132,10 +208,12 @@ function gameScreen() {
       ${spot(3, "e")}
       <div class="seat s${v.turn === HUMAN ? " turn" : ""}"><div class="nm">${PFP[0]} ${tag(0)}${dealer(0)}</div><div class="bid">${bidText(v, 0)}</div></div>
     </div>
+    ${bidding}
     ${chips}
     <div class="hand">${hand}</div>
     ${controls}
-    <p class="msg">${esc(msg)}</p>`;
+    <p class="msg">${esc(rp ? "" : msg)}</p>
+    <div class="panel log" id="log"><div class="small">Hand ${v.no + 1}</div>${moveLines(v).map((l) => `<div>${l}</div>`).join("")}</div>`;
 }
 
 // ---------- the result of a hand, and of the game ----------
@@ -223,7 +301,9 @@ async function load() {
   T = { ...r, practice: null };
   msg = r.reset ? "The bots changed since your last move, so today's game started over." : "";
   mode = "game"; seen = T.view.history.length;   // a game reloaded in progress doesn't replay old results
-  draw();
+  rp = null;
+  if (T.n === 0) playFromStart();   // a new game: the bids before yours play out
+  else draw();
 }
 
 async function practice() {
@@ -232,7 +312,7 @@ async function practice() {
   const r = await api("practice/new", {});
   busy = false;
   if (r.error) { msg = r.error; return draw(); }
-  T = { day: T.day, n: r.n, view: r.view, field: null, practice: r.practice }; seen = T.view.history.length; draw();
+  T = { day: T.day, n: r.n, view: r.view, field: null, practice: r.practice }; seen = T.view.history.length; playFromStart();
 }
 
 async function send(action) {
@@ -240,10 +320,11 @@ async function send(action) {
   busy = true; msg = ""; draw();
   const r = T.practice ? await api("practice/act", { id: T.practice, n: T.n, action }) : await api("act", { day: T.day, n: T.n, action });
   busy = false;
+  const old = T.view;
   if (r.view) T = { day: T.day, n: r.n, view: r.view, field: r.field, practice: T.practice };   // a refused move still brings the game as it is
   if (r.error) msg = r.error;
   else if (r.view.over) msg = "Sealed on the ledger.";
-  draw();
+  if (r.view && !r.error) playBack(old, r.view); else draw();
 }
 
 // ---------- passkeys (WebAuthn in the browser, copied from moba-beat public/account.js) ----------
@@ -297,8 +378,9 @@ function press(k) {
   if (mode === "account") { const f = ACCOUNT_KEYS[k]; if (f) f(); return; }
   if (mode !== "game" || !T) return;
   if (k === "a") return openAccount();
+  if (rp) return;   // moves are playing out
   const v = T.view;
-  if (k === "go") { if (pending()) { seen = v.history.length; msg = ""; draw(); } return; }
+  if (k === "go") { if (pending()) { seen = v.history.length; msg = ""; playFromStart(); } return; }
   if (k === "practice" && v.over) return practice();
   if (k === "daily" && T.practice) return load();
   if (pending()) return;   // the result of a hand is on screen: moves wait until it's dismissed
@@ -323,6 +405,7 @@ document.addEventListener("keydown", (e) => {
   if (mode !== "game" || !T) return;
   const v = T.view;
   if (key === "a") return press("a");
+  if (rp) return;
   if (pending()) { if (key === "enter" || key === " ") { e.preventDefault(); press("go"); } return; }
   if (v.over) { if (key === "p") press("practice"); else if (key === "t") press("daily"); return; }
   if (v.phase === "bid" && v.turn === HUMAN) {

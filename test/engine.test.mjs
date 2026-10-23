@@ -285,6 +285,21 @@ test("a hand's summary names the cards behind HIGH, LOW and JACK", () => {
   }
 });
 
+test("a hand's summary carries every bid and card in order, for the page to play back", () => {
+  const { g } = playGame("seed-9");
+  for (const h of g.history) {
+    assert.equal(h.bids.length, 4);
+    assert.deepEqual(h.bids.map((b) => b.seat), [1, 2, 3, 0].map((k) => (h.dealer + k) % 4));   // left of the dealer first
+    assert.equal(h.tricks.length, 6);
+    const cards = h.tricks.flatMap((t) => t.plays.map((p) => p.card));
+    assert.equal(new Set(cards).size, 24);
+    assert.equal(suitOf(cards[0]), h.trump);                       // the first lead names trump
+    assert.equal(h.tricks[0].plays[0].seat, h.pitcher);            // and the bidder makes it
+    for (const t of h.tricks) assert.equal(new Set(t.plays.map((p) => p.seat)).size, 4);
+    for (let i = 1; i < 6; i++) assert.equal(h.tricks[i].plays[0].seat, h.tricks[i - 1].winner);   // a trick's winner leads the next
+  }
+});
+
 test("illegal moves are refused, and the view hides the bots' cards", () => {
   // the human has a bidding turn unless they are the dealer and the dealer's bid is forced, so pick a seed that has one
   const seed = Array.from({ length: 50 }, (_, i) => "seed-" + i).find((x) => start(x).phase === "bid");

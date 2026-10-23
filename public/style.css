@@ -97,6 +97,12 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .hint { text-align: center; color: var(--mute); font-size: 14px; min-height: 20px; }
 .msg { text-align: center; color: var(--mute); font-size: 13px; min-height: 18px; }
 
+/* the move list under the hand */
+.log { max-height: 170px; overflow-y: auto; font-size: 13px; line-height: 1.55; }
+.log .small { margin-bottom: 4px; }
+.ct { font-weight: 800; color: var(--ink); }
+.ct.r { color: #ff6f91; }
+
 /* results */
 .big { font-family: var(--meme); font-size: 30px; letter-spacing: .5px; text-align: center; text-shadow: 0 0 14px rgba(255,111,207,.6), 0 0 28px rgba(176,132,255,.4); }
 .kv { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 8px 0; font-size: 14px; border-top: 1px solid var(--line); }

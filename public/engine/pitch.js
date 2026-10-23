@@ -357,6 +357,7 @@ function summary(s, no) {
     no, crowd, dealer: s.dealer, trump: s.trump, pitcher: s.pitcher, bid: s.bid, made: r.made, points: r.points, final: r.final,
     high: card(r.high, hi.card), low: card(r.low, lo.card), jack: jack ? card(r.jack, jack.card) : null,
     gameWinner: r.gameWinner, gameTotals: r.gameTotals,
+    bids: s.bids, tricks: s.tricks,   // every bid and card in order, so the page can play the hand's last moves back
   };
 }
 
