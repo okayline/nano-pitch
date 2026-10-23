@@ -308,7 +308,7 @@ function tableTrick(v) {
 
 // What each seat has so far this round, from the finished tricks and the one on the table: the High and Low trump (whoever played
 // them, the actual cards), the Jack (once its trick is won) and the Game card points in the tricks it has won. Same rules as scoreHand
-// in the engine. `cards` is one entry per card (High, then Low, then Jack), so one card in two roles is drawn once.
+// in the engine. `cards` is one entry per card (High, Jack, Low, top to bottom), so one card in two roles is drawn once.
 function held(v) {
   const H = [0, 1, 2, 3].map(() => ({ cards: [], pts: 0 }));
   if (v.trump === null) return H;
@@ -323,6 +323,8 @@ function held(v) {
     H[t.winner].pts += gamePoints(p.card);
     if (suitOf(p.card) === v.trump && rankOf(p.card) === 11) give(t.winner, p.card, "🃏");
   }
+  const rank = { "👑": 0, "🃏": 1, "🪶": 2 };   // top to bottom: High, Jack, Low
+  for (const h of H) h.cards.sort((x, y) => Math.min(...[...x.roles].map((r) => rank[r])) - Math.min(...[...y.roles].map((r) => rank[r])));
   return H;
 }
 
@@ -337,7 +339,7 @@ function gameScreen() {
   };
   const H = held(v), own = (seat, stack) => {   // the cards held, then the Game points; in a column (`stack`) the points come first, which is the bottom
     if (v.trump === null) return "";
-    const cards = H[seat].cards.map((x) => card(x.c, "tiny")).join(""), pts = H[seat].pts ? `<span class="gp">${H[seat].pts}</span>` : "";   // no Game points yet: no number card
+    const tiny = H[seat].cards.map((x) => card(x.c, "tiny")), cards = (stack ? tiny.reverse() : tiny).join(""), pts = H[seat].pts ? `<span class="gp">${H[seat].pts}</span>` : "";   // no Game points yet: no number card
     if (!cards && !pts) return "";
     return `<div class="own">${stack ? pts + cards : cards + pts}</div>`;
   };
