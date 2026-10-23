@@ -124,7 +124,7 @@ export function gameWinnerOf(totals) {
 }
 
 // Scores a finished hand. tricks: [{ plays: [{ seat, card }], winner }].
-//   High: the seat that played the highest trump.  Low: the seat that WON THE TRICK holding the lowest trump played.
+//   High: the seat that played the highest trump.  Low: the seat that PLAYED the lowest trump (another seat may win the trick).
 //   Jack: the seat that won the trick holding the jack of trump (if it was dealt).  Game: most card points won.
 // The pitcher scores what they took if they took at least their bid, otherwise loses the bid.
 export function scoreHand(tricks, trump, pitcher, bid) {
@@ -138,13 +138,13 @@ export function scoreHand(tricks, trump, pitcher, bid) {
   const gameWinner = gameWinnerOf(gameTotals);
   const points = [0, 0, 0, 0];
   points[high.seat]++;
-  points[low.winner]++;
+  points[low.seat]++;
   if (jack) points[jack.winner]++;
   if (gameWinner !== null) points[gameWinner]++;
   const made = points[pitcher] >= bid;
   const final = points.slice();
   if (!made) final[pitcher] = -bid;
-  return { points, final, made, high: high.seat, low: low.winner, jack: jack ? jack.winner : null, gameWinner, gameTotals };
+  return { points, final, made, high: high.seat, low: low.seat, jack: jack ? jack.winner : null, gameWinner, gameTotals };
 }
 
 // ---------- the bots ----------
@@ -160,8 +160,8 @@ export function estimate(hand, suit) {
   const high = has(14) ? 1 : 0;
   // A lone jack gets captured: it counts with the ace or king, or three or more trump.
   const jack = has(11) && (has(14) || has(13) || cards.length >= 3) ? 1 : 0;
-  // Low goes to whoever wins the trick holding the lowest trump, so a small trump only counts with the ace behind it.
-  const low = (has(2) || has(3)) && has(14) ? 1 : 0;
+  // Low goes to whoever plays the lowest trump: the 2 is certain, and the 3 is lowest unless another seat holds the 2.
+  const low = has(2) || has(3) ? 1 : 0;
   const game = hand.reduce((n, c) => n + gamePoints(c), 0) >= GAME_MIN ? 1 : 0;
   return high + jack + low + game;
 }
@@ -275,8 +275,8 @@ export function botPlay(v) {
     return (pool.length ? pool : hand).sort(byLow)[0];
   }
 
-  // Following: if the trick holds a point card (a ten, the trump jack, a very low trump), win it as cheaply as possible.
-  const point = trick.some((p) => rankOf(p.card) === 10 || (suitOf(p.card) === trump && (rankOf(p.card) === 11 || rankOf(p.card) <= 3)));
+  // Following: if the trick holds a point card (a ten or the trump jack), win it as cheaply as possible.
+  const point = trick.some((p) => rankOf(p.card) === 10 || (suitOf(p.card) === trump && rankOf(p.card) === 11));
   if (point) {
     const winners = legal.filter((c) => trickWinner([...trick, { seat, card: c }], trump) === seat);
     if (winners.length) return winners.sort(dump)[0];
@@ -286,7 +286,8 @@ export function botPlay(v) {
 }
 
 // ---------- the hand ----------
-// state = { seed, dealer, dealt, hands, bids, phase: "bid" | "play" | "done", turn, pitcher, bid, trump, trick, tricks, result }
+// state = { seed, dealer, dealt, hands, bids, phase: "bid" | "play" | "done", turn, pitcher, bid, trump, trick, tricks, out, result }
+// `out` marks the seats that sat out the round: once the first lead names trump, a seat dealt no trump plays no cards.
 // Plain JSON, so the Worker can keep it. `start` and `act` hand back a state waiting on the human (or finished).
 
 export function start(seed, dealerSeat, memory = null, cast = null) {
@@ -294,7 +295,7 @@ export function start(seed, dealerSeat, memory = null, cast = null) {
   return advance({
     seed, dealer, memory, cast, dealt: hands.map((h) => h.slice()), hands,
     bids: [], phase: "bid", turn: (dealer + 1) % 4,
-    pitcher: null, bid: 0, trump: null, trick: [], tricks: [], result: null,
+    pitcher: null, bid: 0, trump: null, trick: [], tricks: [], out: [false, false, false, false], result: null,
   });
 }
 
@@ -311,14 +312,24 @@ function settleBids(s) {
   s.turn = top.seat;
 }
 
+// The next seat clockwise that is still playing the round.
+function nextIn(s, seat) {
+  let n = (seat + 1) % 4;
+  while (s.out[n]) n = (n + 1) % 4;
+  return n;
+}
+
 function playCard(s, seat, card) {
   if (s.turn !== seat) throw new Error("Not that seat's turn.");
   if (!s.hands[seat].includes(card)) throw new Error("That card isn't in the hand.");
   if (!legalPlays(s.hands[seat], s.trick, s.trump).includes(card)) throw new Error("That card isn't legal.");
   s.hands[seat].splice(s.hands[seat].indexOf(card), 1);
   s.trick.push({ seat, card });
-  if (s.trump === null) s.trump = suitOf(card); // the pitcher's first lead names trump
-  if (s.trick.length < 4) { s.turn = (seat + 1) % 4; return; }
+  if (s.trump === null) { // the pitcher's first lead names trump; a seat dealt none of it sits out the round
+    s.trump = suitOf(card);
+    s.out = s.dealt.map((h) => !h.some((c) => suitOf(c) === s.trump));
+  }
+  if (s.trick.length < s.out.filter((o) => !o).length) { s.turn = nextIn(s, seat); return; }
   const winner = trickWinner(s.trick, s.trump);
   s.tricks.push({ plays: s.trick, winner });
   s.trick = [];
@@ -367,7 +378,7 @@ export function act(state, action) {
 export function view(s) {
   const mine = s.turn === HUMAN && s.phase !== "done";
   return {
-    dealer: s.dealer, phase: s.phase, turn: s.turn, hand: s.hands[HUMAN], counts: s.hands.map((h) => h.length),
+    dealer: s.dealer, phase: s.phase, turn: s.turn, hand: s.hands[HUMAN], counts: s.hands.map((h, seat) => (s.out[seat] ? 0 : h.length)), out: s.out,
     bids: s.bids, bidOptions: mine && s.phase === "bid" ? bidOptions(s.bids, s.dealer, HUMAN) : null,
     pitcher: s.pitcher, bid: s.bid, trump: s.trump, trick: s.trick, tricks: s.tricks,
     legal: mine && s.phase === "play" ? legalPlays(s.hands[HUMAN], s.trick, s.trump) : null,
@@ -405,7 +416,7 @@ function summary(s, no) {
   const at = s.bids.findIndex((b) => b.seat === HUMAN), mine = s.bids[at];
   const crowd = mine.forced ? null : { key: crowdKey(s.dealt[HUMAN], Math.max(0, ...s.bids.slice(0, at).map((b) => b.bid))), bid: mine.bid };
   return {
-    no, crowd, dealer: s.dealer, trump: s.trump, pitcher: s.pitcher, bid: s.bid, made: r.made, points: r.points, final: r.final,
+    no, crowd, dealer: s.dealer, out: s.out, trump: s.trump, pitcher: s.pitcher, bid: s.bid, made: r.made, points: r.points, final: r.final,
     high: card(r.high, hi.card), low: card(r.low, lo.card), jack: jack ? card(r.jack, jack.card) : null,
     gameWinner: r.gameWinner, gameTotals: r.gameTotals,
     bids: s.bids, tricks: s.tricks,   // every bid and card in order, so the page can play the hand's last moves back

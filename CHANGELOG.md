@@ -4,6 +4,19 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.9.2
+**Thu Oct 22, 2026**
+
+- Rules: a seat dealt no trump sits out the round: it plays no cards and its seat says "Sat out" (cards never played don't count towards Game). The Low point goes to the seat that played the lowest trump; Game points still go to whoever wins the trick. The bots count a lone 2 or 3 of trump as a Low point. Removed: Low going to whoever won the trick holding the lowest trump, and bots chasing a trick just because a low trump is in it. Games saved before this release replay under the new rules.
+- Names: a "hand" (one deal) is now a "round" everywhere you read it ("Round 3", "ROUND 3 OVER", "Next round", the ledger), and the chat says "takes hand" for a trick. Removed: "hand" for a deal, and "takes trick".
+- Subtitle: it shows the round whose result is on screen and moves on when the next round starts. Removed: the subtitle jumping ahead of the result.
+- Chat: the text is bold again, actions read "Cracked Icon folds" with no colon, and card plays and emoji keep it ("Cracked Icon: K♦"). Removed: the colon on actions, the regular-weight chat text, and every "You:" line (your own moves are on the table).
+- Table: names never wrap and match the other seat names, the face-down cards are twice as big, an empty row sits under the cards on the table and under your hand, and the hand row keeps its height when you have no cards. Removed: the "Play a card" hint.
+- Final screen: the headline is the winner's name and "WINS". Removed: "YOU BEAT THE TABLE" and "THE TABLE WINS".
+- Ledger and Account: the links read "Back  Account" and "Back  Ledger". Removed: the old link order.
+
+---
+
 ## v0.9.1
 **Thu Oct 22, 2026**
 

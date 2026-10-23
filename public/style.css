@@ -48,7 +48,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .score .bar.neg i { position: absolute; top: 0; right: 100%; background: linear-gradient(270deg, #ff2d3f, #ff5a5f); box-shadow: 0 0 10px rgba(255,45,63,.7); }
 
 /* the table */
-.table { display: grid; grid-template-columns: 1fr 1.4fr 1fr; grid-template-areas: ". n ." "w c e" ". s ." "h h h"; gap: 8px; align-items: center;
+.table { display: grid; grid-template-columns: 1fr 1.4fr 1fr; grid-template-areas: ". n ." "w c e" ". . ." ". s ." "h h h" ". . ."; grid-template-rows: auto auto 20px auto auto 20px;   /* two empty rows: one between the cards on the table and your name, one under your cards */ gap: 8px; align-items: center;
          background: radial-gradient(ellipse at 50% 45%, #241a40 0%, var(--panel) 70%); }
 .seat { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
 .seat.s { flex-direction: row; justify-content: center; gap: 10px; }   /* your name, with your status text to its right */
@@ -57,11 +57,11 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .table:has(.seat.turn) .seat:not(.turn) { opacity: .5; }   /* whose move it is: everyone else dims, theirs glows a little */
 .seat { transition: opacity .2s; }
 .seat.turn .nm { filter: drop-shadow(0 0 5px rgba(255,111,207,.7)); }
-.seat .nm { font-size: 15px; color: var(--mute); }
+.seat .nm { font-size: 15px; color: var(--mute); white-space: nowrap; }   /* a name is never on two lines */
 .seat .nm .d { display: inline-block; margin-left: 4px; font-size: 10px; font-weight: 800; color: var(--bg); background: var(--c); border-radius: 4px; padding: 0 4px; }
-.backs { display: flex; height: 46px; }
-.backs i { width: 30px; height: 44px; margin-left: -14px; border-radius: 5px; border: 1px solid var(--line);
-           background: repeating-linear-gradient(45deg, #2a1f4a 0 3px, #3a2a66 3px 6px); }
+.backs { display: flex; justify-content: center; width: 100%; height: 90px; }
+.backs i { flex: 0 1 60px; min-width: 6px; height: 88px; margin-left: -48px; border-radius: 10px; border: 1px solid var(--line);   /* the cards fan out, and shrink to fit a narrow seat */
+           background: repeating-linear-gradient(45deg, #2a1f4a 0 6px, #3a2a66 6px 12px); }
 .backs i:first-child { margin-left: 0; }
 .seat .bid { min-height: 22px; }
 .center { grid-area: c; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 62px); gap: 4px; justify-items: center; align-items: center; }   /* three card rows, always: the table never changes height */
@@ -92,6 +92,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .hand .pc.ok { box-shadow: 0 0 0 2px var(--a), 0 0 16px rgba(176,132,255,.6); }
 .hand .pc.ok:hover { transform: translateY(-6px); }
 .hand .pc.no { opacity: .35; }
+.hand .pc.blank { visibility: hidden; }
 
 /* actions */
 .go { width: 100%; height: 54px; border-radius: 14px; border: 0; background: linear-gradient(135deg, var(--a), var(--b)); font-family: var(--meme); font-size: 19px; letter-spacing: .5px;
@@ -107,7 +108,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 /* the move list: the newest moves in the table's top right corner, like a stream's chat */
 .table { position: relative; }
 .feed { position: absolute; top: 5px; right: 10px; width: 42%; display: flex; flex-direction: column; gap: 2px;
-        font-size: 10px; line-height: 1.3; font-weight: 400; text-align: right; pointer-events: none; z-index: 1;
+        font-size: 10px; line-height: 1.3; text-align: right; pointer-events: none; z-index: 1;
         text-shadow: none; }   /* no glow in the chat, not on the names either */
 .feed .tag.s1, .feed .tag.s2, .feed .tag.s3 { text-shadow: none; }
 .feed div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* one line per move, never two */
@@ -115,7 +116,6 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .feed div:nth-last-child(n+4) { opacity: .45; }
 .feed div:nth-last-child(n+5) { opacity: .25; }
 .ct { font-weight: 800; color: var(--ink); }
-.feed .ct { font-weight: 400; }   /* in the chat the names are bold and the moves are not */
 .seat.turn .bid .chip { opacity: .5; }   /* the bid chip stays dim, even on its seat's turn */
 .ct.r { color: #ff6f91; }
 

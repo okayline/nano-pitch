@@ -49,19 +49,21 @@ const backs = (n) => `<div class="backs">${"<i></i>".repeat(n)}</div>`;
 export const PACE = { move: 1300, trick: 2650, east: 650 };   // ms after a bid or card, after the card that ends a trick, and after East's, when it is your turn next
 let rp = null;   // the replay on screen: { h, base, tmpl, k, evs }
 
-const progress = (v) => v.bids.length + 4 * v.tricks.length + v.trick.length;
+const sizeOf = (h) => 4 - (h.out || []).filter(Boolean).length;   // seats in a trick: a seat dealt no trump sits the round out
+const progress = (v) => v.bids.length + sizeOf(v) * v.tricks.length + v.trick.length;
 const events = (h) => [...h.bids.map((b) => ({ seat: b.seat })), ...h.tricks.flatMap((t) => t.plays), ...(h.trick || [])];
 
 // The table after the first k moves of hand h. `base` is the player's cards before any of the replayed moves; `tmpl` gives
 // everything that isn't the hand's moves (totals, hand number, dealer).
 function frame({ h, base, tmpl, k, evs, shown }) {
   const nb = Math.min(k, h.bids.length), plays = evs.slice(h.bids.length, Math.max(h.bids.length, k));
-  const full = Math.floor(plays.length / 4), counts = [6, 6, 6, 6], mine = [];
+  const out = plays.length ? h.out : [false, false, false, false];   // who sat out is known once the first card names trump
+  const size = sizeOf({ out }), full = Math.floor(plays.length / size), counts = out.map((o) => (o ? 0 : 6)), mine = [];
   for (const p of plays) { counts[p.seat]--; if (p.seat === HUMAN) mine.push(p.card); }
   const settled = nb === 4;
   return {
-    ...tmpl, dealer: h.dealer, bids: h.bids.slice(0, nb), tricks: h.tricks.slice(0, full), trick: plays.slice(full * 4),
-    counts, hand: base.filter((c) => !mine.includes(c)), phase: settled ? "play" : "bid",
+    ...tmpl, dealer: h.dealer, bids: h.bids.slice(0, nb), tricks: h.tricks.slice(0, full), trick: plays.slice(full * size),
+    counts, out, hand: base.filter((c) => !mine.includes(c)), phase: settled ? "play" : "bid",
     pitcher: settled ? h.pitcher : null, bid: settled ? h.bid : 0, trump: plays.length ? suitOf(plays[0].card) : null,
     turn: k < evs.length ? evs[k].seat : null, legal: null, bidOptions: null,
     hold: shown ? null : k - 1,   // the chat holds back the newest move's follow-up lines (its emoji, who took the trick, who has the bid) until `shown`
@@ -77,9 +79,10 @@ function replay(h, base, from, tmpl, then) {
   const step = () => {
     if (rp !== run) return;
     run.k++; run.shown = false; draw();
+    const k = run.k;
     const p = run.k > h.bids.length ? run.k - h.bids.length : 0;   // cards played so far
-    const wait = p && p % 4 === 0 ? PACE.trick : run.k >= evs.length && evs[run.k - 1].seat === 3 ? PACE.east : PACE.move;
-    setTimeout(() => { if (rp === run) { run.shown = true; draw(); } }, wait / 2);   // the move's follow-up chat line comes halfway to the next move, so every message arrives alone
+    const wait = p && p % sizeOf(h) === 0 ? PACE.trick : run.k >= evs.length && evs[run.k - 1].seat === 3 ? PACE.east : PACE.move;
+    setTimeout(() => { if (rp === run && run.k === k) { run.shown = true; draw(); } }, wait / 2);   // the move's follow-up chat line comes halfway to the next move, so every message arrives alone
     setTimeout(() => { if (rp !== run) return; if (run.k >= evs.length) { rp = null; then(); } else step(); }, wait);
   };
   if (evs[from].seat === HUMAN) step(); else { draw(); setTimeout(step, PACE.move); }
@@ -89,7 +92,7 @@ function replay(h, base, from, tmpl, then) {
 function playBack(old, now) {
   if (now.history.length > old.history.length) {   // the move ended a hand: finish it, then its result screen shows
     const s = now.history[old.history.length];
-    return replay({ dealer: s.dealer, bids: s.bids, tricks: s.tricks, trick: [], pitcher: s.pitcher, bid: s.bid }, old.hand, progress(old), old, draw);
+    return replay({ dealer: s.dealer, out: s.out, bids: s.bids, tricks: s.tricks, trick: [], pitcher: s.pitcher, bid: s.bid }, old.hand, progress(old), old, draw);
   }
   replay(now, old.hand, progress(old), now, draw);
 }
@@ -101,33 +104,35 @@ const FEED = 5;
 let fed = 0;   // how many lines the feed held the last time the table was drawn
 const cardTxt = (c) => `<span class="ct${RED[suitOf(c)] ? " r" : ""}">${rk(c)}${SUIT[suitOf(c)]}</span>`;
 function moveLines(v) {
-  const you = (s) => s === HUMAN, nm = (s) => `${pfp(s)} ${tag(s)}`;
-  // The words vary move to move, picked from the move's place in the hand (so a replay or reload chats the same). [bot's form, your form].
+  const nm = (s) => `${pfp(s)} ${tag(s)}`;
+  // The words vary move to move, picked from the move's place in the hand (so a replay or reload chats the same). Your own moves
+  // aren't in the chat; the table shows them.
   const spin = (i, s, salt) => [...`${v.no}|${i}|${s}|${salt}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7) >>> 3;
   const WORDS = {
-    play: [["slaps down", "slap down"], ["drops", "drop"], ["serves", "serve"]],
-    lead: [["leads", "lead"], ["starts", "start"], ["opens", "open"]],
-    win: [["takes trick", "take trick"], ["takes it", "take it"], ["gets it", "get it"], ["W", "W"]],
-    pass: [["passes", "pass"], ["nope", "nope"], ["folds", "fold"], ["hmm...next", "hmm...next"]],
-    bid: [["bids", "bid"], ["goes", "go"]],
-    have: [["gets their", "get your"], ["gets", "get"], ["wins", "win"]],
+    play: ["slaps down", "drops", "serves"],
+    lead: ["leads", "starts", "opens"],
+    win: ["takes hand", "takes it", "gets it", "W"],
+    pass: ["passes", "nope", "folds", "hmm...next"],
+    bid: ["bids", "goes"],
+    have: ["gets their", "gets", "wins"],
   };
-  const word = (kind, i, s) => WORDS[kind][spin(i, s, kind) % WORDS[kind].length][you(s) ? 1 : 0];
+  const word = (kind, i, s) => WORDS[kind][spin(i, s, kind) % WORDS[kind].length];
   const card = (kind, i, p) => (spin(i, p.seat, "bare") % 10 < 6 ? cardTxt(p.card) : `${word(kind, i, p.seat)} ${cardTxt(p.card)}`);   // most of the time just the card
-  const E = [];   // [seat, text, index of the move it belongs to, is it a follow-up line]
-  v.bids.forEach((b, j) => E.push([b.seat, b.forced ? "stuck 2" : b.bid ? `${word("bid", E.length, b.seat)} ${b.bid}` : word("pass", E.length, b.seat), j, false]));
-  if (v.pitcher !== null) E.push([v.pitcher, `${word("have", E.length, v.pitcher)} ${v.bid}`, v.bids.length - 1, true]);
+  const E = [];   // [seat, text, index of the move it belongs to, is it a follow-up line, is it a card played (those read "name: card", the rest "name folds")]
+  v.bids.forEach((b, j) => E.push([b.seat, b.forced ? "stuck 2" : b.bid ? `${word("bid", E.length, b.seat)} ${b.bid}` : word("pass", E.length, b.seat), j, false, false]));
+  if (v.pitcher !== null) E.push([v.pitcher, `${word("have", E.length, v.pitcher)} ${v.bid}`, v.bids.length - 1, true, false]);
   let first = true, mv = v.bids.length;
   for (const t of [...v.tricks, { plays: v.trick, winner: null }]) {
-    for (const p of t.plays) { E.push([p.seat, card(first ? "lead" : "play", E.length, p), mv++, false]); first = false; }
-    if (t.winner !== null) E.push([t.winner, word("win", E.length, t.winner), mv - 1, true]);
+    for (const p of t.plays) { E.push([p.seat, card(first ? "lead" : "play", E.length, p), mv++, false, true]); first = false; }
+    if (t.winner !== null) E.push([t.winner, word("win", E.length, t.winner), mv - 1, true, false]);
   }
   // Now and then a bot posts just an emoji after its move. Which moves and which emoji come from the move's place in the hand, so a replay or reload chats the same.
   const EMOTE = [["😴", "🥱", "💤", "🫠"], ["🗿", "😐", "💀", "🔥"], ["😤", "🥶", "🤬", "🧊"], ["🙂", "😶", "👍", "🤷"]];   // by personality: safe, bold, crowd, none
   const mood = (s, i) => { const h = [...`${v.no}|${i}|${s}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7); return h % 8 === 0 ? EMOTE[v.cast[s].persona ?? 3][(h >> 4) % 4] : null; };
-  return E.flatMap(([s, text, ev, late], i) => {
-    const held = ev === v.hold, e = s !== HUMAN && !held && mood(s, i);   // while a move is the newest on a replaying table, its follow-up lines wait
-    return [...(late && held ? [] : [`${nm(s)}: ${text}`]), ...(e ? [`${nm(s)}: ${e}`] : [])];
+  return E.flatMap(([s, text, ev, late, played], i) => {
+    if (s === HUMAN) return [];
+    const held = ev === v.hold, e = !held && mood(s, i);   // while a move is the newest on a replaying table, its follow-up lines wait
+    return [...(held && late ? [] : [`${nm(s)}${played ? ":" : ""} ${text}`]), ...(e ? [`${nm(s)}: ${e}`] : [])];
   });
 }
 
@@ -161,8 +166,8 @@ function draw() {
 }
 
 function header() {
-  const sub = T ? `${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · Game #${T.game} · ${T.view.over ? "Final" : "Hand " + (T.view.no + 1)}` : "";   // today's date on this device
-  const right = mode === "account" ? `<span class="row" style="gap:14px"><a class="link" href="ledger.html">Ledger</a><button class="link" data-k="esc">Back</button></span>`
+  const sub = T ? `${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · Game #${T.game} · ${T.view.over ? "Final" : "Round " + ((!rp && pending() ? T.view.history[seen].no : T.view.no) + 1)}` : "";   // today's date on this device
+  const right = mode === "account" ? `<span class="row" style="gap:14px"><button class="link" data-k="esc">Back</button><a class="link" href="ledger.html">Ledger</a></span>`
     : `<span class="row" style="gap:14px"><a class="link" href="ledger.html">Ledger</a><button class="link" data-k="a">Account</button></span>`;
   return `<header><div class="title">NANO PITCH<small>${esc(sub)}</small></div>${right}</header>`;
 }
@@ -185,6 +190,7 @@ function scoreboard(v) {
 const pending = () => T.view.history.length > seen;   // a finished hand whose result hasn't been shown yet
 
 function bidText(v, seat) {
+  if (v.out && v.out[seat]) return `<span class="small">Sat out</span>`;   // dealt no trump
   if (v.phase === "play" && seat !== v.pitcher) return "";   // once the bidding is over only the bidder's bid stays up
   const b = v.bids.find((x) => x.seat === seat);
   if (!b) return v.phase === "bid" && v.turn === seat ? `<span class="small">${seat === HUMAN ? "your bid" : "thinking…"}</span>` : "";
@@ -218,14 +224,15 @@ function gameScreen() {
   const middle = v.phase === "bid" ? `<div class="mid"><span class="bot">${ICON.table}</span><br>bidding</div>` : (tt.plays.length ? "" : `<div class="mid"><span class="bot">${ICON.table}</span></div>`);
 
   const legal = new Set(v.legal || []), canPlay = !rp && v.phase === "play" && v.turn === HUMAN;
-  const hand = v.hand.map((c) => (canPlay && legal.has(c) ? card(c, "ok", "c" + c) : card(c, canPlay ? "no" : ""))).join("");
+  const hand = v.hand.length ? v.hand.map((c) => (canPlay && legal.has(c) ? card(c, "ok", "c" + c) : card(c, canPlay ? "no" : ""))).join("")
+    : '<div class="pc blank" aria-hidden="true"></div>'.repeat(6);   // no cards left: invisible ones hold the row open at the size of a hand
 
   let controls = "", bidding = "";
   if (!rp && v.phase === "bid" && v.turn === HUMAN) {
     const lit = v.bidOptions.includes(hotBid) ? hotBid : 0;
     bidding = `<div class="bids">${[0, 2, 3, 4].map((b) => `<button data-k="b${b}" class="${b === lit ? "hot" : ""}" ${v.bidOptions.includes(b) ? "" : "disabled"}>${b ? b : "Pass"}</button>`).join("")}</div>`;
   } else if (canPlay) {
-    controls = `<p class="hint">${v.trick.length || v.trump !== null ? "Play a card" : "Your lead names trump"}</p>`;
+    controls = v.trick.length || v.trump !== null ? "" : `<p class="hint">Your lead names trump</p>`;
   }
 
 
@@ -235,7 +242,7 @@ function gameScreen() {
       ${spot(2, "n")}${spot(1, "w")}
       <div class="center">${played(2, "tn")}${played(1, "tw")}${middle}${played(3, "te")}${played(0, "ts")}</div>
       ${spot(3, "e")}
-      <div class="seat s${v.turn === HUMAN ? " turn" : ""}"><div class="nm">${pfp(0)} ${myName ? `<b>${esc(myName)}</b>` : tag(0)}${dealer(0)}</div><div class="bid">${bidText(v, 0)}</div></div>
+      <div class="seat s${v.turn === HUMAN ? " turn" : ""}"><div class="nm">${pfp(0)} ${myName ? `<span class="tag">${esc(myName)}</span>` : tag(0)}${dealer(0)}</div><div class="bid">${bidText(v, 0)}</div></div>
       <div class="hand">${hand}</div>
     </div>
     ${bidding}
@@ -251,24 +258,24 @@ function handScreen(h) {
   const delta = (n) => `<span class="${n > 0 ? "up" : n < 0 ? "down" : "small"}">${signed(n)}</span>`;
   return header() + scoreboard(v) + `
     <div class="panel handover">
-      <div class="between"><div class="big" style="font-size:24px">HAND ${h.no + 1} OVER</div>${suitChip(h.trump)}</div>
+      <div class="between"><div class="big" style="font-size:24px">ROUND ${h.no + 1} OVER</div>${suitChip(h.trump)}</div>
       <div class="rows">
         ${row(`${ICON.high} High`, `${who(h.high.seat)} ${card(h.high.card, "mini")}`)}
-        ${row(`${ICON.low} Low`, `${who(h.low.seat)} <span class="small">won the trick with</span> ${card(h.low.card, "mini")}`)}
+        ${row(`${ICON.low} Low`, `${who(h.low.seat)} <span class="small">played</span> ${card(h.low.card, "mini")}`)}
         ${row(`${ICON.jack} Jack`, h.jack ? `${who(h.jack.seat)} ${card(h.jack.card, "mini")}` : `<span class="small">not in play</span>`)}
         ${row(`${ICON.game} Game`, h.gameWinner === null ? `<span class="small">tied: nobody</span>` : `${who(h.gameWinner)} <span class="small">${h.gameTotals[h.gameWinner]} card points</span>`)}
         ${row(`${ICON.bid} Bid`, `${who(h.pitcher)} bid ${h.bid}: ${h.made ? `<b class="up">made it</b>` : `<b class="down">set ${-h.bid}</b>`}`)}
-        ${row("This hand", [0, 1, 2, 3].map((s) => `${tag(s)} ${delta(h.final[s])}`).join(" "))}
+        ${row("This round", [0, 1, 2, 3].map((s) => `${tag(s)} ${delta(h.final[s])}`).join(" "))}
       </div>
-      <button class="go" data-k="go">${last && v.over ? "See the result" : "Next hand"}</button>
+      <button class="go" data-k="go">${last && v.over ? "See the result" : "Next round"}</button>
     </div>`;
 }
 
 function finalScreen() {
   const v = T.view, f = T.field, place = v.place;
   const winner = v.totals.indexOf(Math.max(...v.totals));
-  const headline = place === 1 ? "YOU BEAT THE TABLE" : "THE TABLE WINS";
-  const sub = place === 1 ? `first to ${v.target} in ${v.history.length} hands` : `${tag(winner)} got there first · you placed ${ORD[place]}`;
+  const headline = `${esc((winner === HUMAN ? myName || "You" : v.cast[winner].name).toUpperCase())} WINS`;
+  const sub = place === 1 ? `first to ${v.target} in ${v.history.length} rounds` : `${tag(winner)} got there first · you placed ${ORD[place]}`;
   const finals = v.history.map((h) => { const n = h.final[HUMAN]; return `<span class="chip ${n > 0 ? "up" : n < 0 ? "down" : ""}">${signed(n)}</span>`; }).join("");
   let field = "";
   if (f && f.games > 0) {
@@ -276,18 +283,18 @@ function finalScreen() {
     field = `<div class="panel">
       <div class="kv"><span>The field</span><span>${f.games} player${f.games === 1 ? "" : "s"} finished this game</span></div>
       <div class="kv"><span>Beat the table</span><span>${f.games === 1 ? "you're the first to finish it" : `${won}% of players`}</span></div>
-      <div class="kv"><span>Average game</span><span>${(f.hands / f.games).toFixed(1)} hands</span></div></div>`;
+      <div class="kv"><span>Average game</span><span>${(f.hands / f.games).toFixed(1)} rounds</span></div></div>`;
   }
   // The table's memory at work: how many of the bots' bids this game went with what the table remembered.
   const botBids = v.history.flatMap((h) => h.bids.filter((b) => b.seat !== HUMAN && !b.forced));
   const followed = [1, 2, 3].map((s) => ({ s, n: botBids.filter((b) => b.seat === s && b.crowd).length })).filter((x) => x.n);
   const memory = `<div class="panel"><div class="kv"><span>The table's memory</span><span>${botBids.filter((b) => b.crowd).length} of ${botBids.length} bot bids went with the crowd</span></div>
-      ${followed.length ? `<div class="small">${followed.map((x) => `${tag(x.s)} ${x.n}`).join(" · ")}</div>` : `<div class="small">The table hasn't seen enough hands like these yet.</div>`}</div>`;
+      ${followed.length ? `<div class="small">${followed.map((x) => `${tag(x.s)} ${x.n}`).join(" · ")}</div>` : `<div class="small">The table hasn't seen enough rounds like these yet.</div>`}</div>`;
   const buttons = `<button class="go" data-k="play">Play</button>`;
   return header() + `
     <div class="panel"><div class="big">${headline}</div><p class="hint" style="margin:6px 0 0">${sub}</p></div>
     ${scoreboard(v)}
-    <div class="panel"><div class="small" style="margin-bottom:8px">Your score each hand</div><div class="hands">${finals}</div></div>
+    <div class="panel"><div class="small" style="margin-bottom:8px">Your score each round</div><div class="hands">${finals}</div></div>
     ${field}
     ${memory}
     <p class="msg">${esc(msg)}</p>

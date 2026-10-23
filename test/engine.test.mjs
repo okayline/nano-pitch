@@ -76,8 +76,8 @@ test("game point: most card points, a tie gives it to nobody", () => {
 });
 
 // Six tricks worked out by hand, trump hearts, seat 1 the pitcher.
-// Hearts played: AH KH QH JH TH 9H 5H 4H 2H. High = AH, played by seat 1. Low = 2H, played by seat 3 in a trick
-// that seat 2 won with 9H. Jack = JH, played by seat 0 in a trick seat 1 won with KH.
+// Hearts played: AH KH QH JH TH 9H 5H 4H 2H. High = AH, played by seat 1. Low = 2H, played by seat 3 (the Low point is
+// theirs) in a trick that seat 2 won with 9H. Jack = JH, played by seat 0 in a trick seat 1 won with KH.
 // Card points per trick: 4, 10, 6, 17, 9, 12 (58 in all). Seat 1 won tricks 1, 3, 4 = 27, so Game is seat 1's.
 const play = (s, codes) => codes.split(" ").map((code, i) => ({ seat: (s + i) % 4, card: cardFromCode(code) }));
 const TRICKS = [
@@ -89,33 +89,37 @@ const TRICKS = [
   { plays: play(3, "5H QH 4H TH"), winner: 0 },
 ];
 
-test("scoring a hand: High, Low (won by the trick winner), Jack, Game", () => {
+test("scoring a hand: High, Low (to the seat that played it), Jack, Game", () => {
   // trick 3 was led by seat 2: seats 2, 3, 0, 1 played QS 3S JH KH, so the jack (third card) is seat 0's
   const r = scoreHand(TRICKS, H, 1, 3);
   assert.equal(r.high, 1);
-  assert.equal(r.low, 2);
+  assert.equal(r.low, 3);   // seat 3 played the 2; seat 2 took that trick and its card points
   assert.equal(r.jack, 1);
   assert.deepEqual(r.gameTotals, [12, 27, 10, 9]);
   assert.equal(r.gameWinner, 1);
-  assert.deepEqual(r.points, [0, 3, 1, 0]);
+  assert.deepEqual(r.points, [0, 3, 0, 1]);
   assert.equal(r.made, true);
-  assert.deepEqual(r.final, [0, 3, 1, 0]);
+  assert.deepEqual(r.final, [0, 3, 0, 1]);
 });
 
 test("a bid that isn't made is set: the pitcher loses the bid, everyone else keeps what they took", () => {
   const r = scoreHand(TRICKS, H, 1, 4);
   assert.equal(r.made, false);
-  assert.deepEqual(r.points, [0, 3, 1, 0]);
-  assert.deepEqual(r.final, [0, -4, 1, 0]);
+  assert.deepEqual(r.points, [0, 3, 0, 1]);
+  assert.deepEqual(r.final, [0, -4, 0, 1]);
 });
 
 test("estimating a hand by hand", () => {
   // hearts: ace (1) + jack with the ace (1); no 2 or 3 of hearts; card points 4 + 1 = 5, under the Game line
   assert.equal(estimate(C("AH JH 9H 2D 3C 4C"), H), 2);
-  // hearts: ace, jack, the 2 behind the ace = 3; card points AH 4 + JH 1 + TD 10 + TC 10 + KS 3 = 28 = Game: 4
+  // hearts: ace, jack, the 2 (Low goes to whoever plays it) = 3; card points AH 4 + JH 1 + TD 10 + TC 10 + KS 3 = 28 = Game: 4
   assert.equal(estimate(C("AH 2H JH TD TC KS"), H), 4);
   // a lone jack with a low card and no ace or king counts for nothing
   assert.equal(estimate(C("JH 5D 6D 7C 8C 9S"), H), 0);
+  // a lone 2 or 3 of trump counts for the Low point, with nothing else behind it
+  assert.equal(estimate(C("2H 5D 6D 7C 8C 9S"), H), 1);
+  assert.equal(estimate(C("3H 5D 6D 7C 8C 9S"), H), 1);
+  assert.equal(estimate(C("4H 5D 6D 7C 8C 9S"), H), 0);
 });
 
 test("best suit: most points, then most cards, then the lowest suit", () => {
@@ -231,22 +235,30 @@ function playOut(seed) {
   return { s, actions };
 }
 
-test("120 seeds: every hand finishes, all 24 cards are played once, points are consistent", () => {
+test("120 seeds: every round finishes, each seat with trump plays its 6 cards once, a seat without trump sits out, points are consistent", () => {
+  let sat = 0;
   for (let i = 0; i < 120; i++) {
     const { s } = playOut("seed-" + i);
     assert.equal(s.tricks.length, 6);
+    const playing = [0, 1, 2, 3].filter((seat) => s.dealt[seat].some((c) => suitOf(c) === s.trump));
+    assert.deepEqual(s.out, [0, 1, 2, 3].map((seat) => !playing.includes(seat)));   // sat out = dealt no trump
+    assert.ok(playing.includes(s.pitcher));
+    sat += 4 - playing.length;
+    for (const seat of s.out.flatMap((o, k) => (o ? [k] : []))) assert.equal(s.hands[seat].length, 6);   // a seat that sat out kept all its cards
     const played = s.tricks.flatMap((t) => t.plays.map((p) => p.card));
-    assert.deepEqual([...played].sort((a, b) => a - b), s.dealt.flat().sort((a, b) => a - b));
-    for (const t of s.tricks) assert.equal(t.plays.length, 4);
+    assert.deepEqual([...played].sort((a, b) => a - b), playing.flatMap((seat) => s.dealt[seat]).sort((a, b) => a - b));
+    for (const t of s.tricks) assert.deepEqual(t.plays.map((p) => p.seat).sort(), playing.slice().sort());
     assert.equal(suitOf(s.tricks[0].plays[0].card), s.trump); // the pitcher's first lead named trump
     assert.equal(s.tricks[0].plays[0].seat, s.pitcher);
     const r = s.result;
     const given = 2 + (r.jack !== null ? 1 : 0) + (r.gameWinner !== null ? 1 : 0);
     assert.equal(r.points.reduce((a, b) => a + b, 0), given);
-    assert.equal(r.gameTotals.reduce((a, b) => a + b, 0), s.dealt.flat().reduce((n, c) => n + gamePoints(c), 0));
+    assert.equal(r.gameTotals.reduce((a, b) => a + b, 0), played.reduce((n, c) => n + gamePoints(c), 0));   // only the cards played count
+    assert.equal(s.tricks.flatMap((t) => t.plays).filter((p) => suitOf(p.card) === s.trump).reduce((a, p) => (p.card % 13 < a.card % 13 ? p : a)).seat, r.low);   // Low: the seat that played the lowest trump
     assert.equal(r.made, r.points[s.pitcher] >= s.bid);
     assert.ok(s.bid >= 2 && s.bid <= 4);
   }
+  assert.ok(sat > 0, "some seed has a seat that sits out");
 });
 
 // Plays a whole game: the first allowed bid and the first legal card each time, recording the actions.
@@ -323,10 +335,12 @@ test("a hand's summary carries every bid and card in order, for the page to play
     assert.deepEqual(h.bids.map((b) => b.seat), [1, 2, 3, 0].map((k) => (h.dealer + k) % 4));   // left of the dealer first
     assert.equal(h.tricks.length, 6);
     const cards = h.tricks.flatMap((t) => t.plays.map((p) => p.card));
-    assert.equal(new Set(cards).size, 24);
+    const playing = h.out.filter((o) => !o).length;
+    assert.equal(new Set(cards).size, 6 * playing);                // every seat with trump plays its 6; the others sit out
+    assert.equal(h.out[h.pitcher], false);
     assert.equal(suitOf(cards[0]), h.trump);                       // the first lead names trump
     assert.equal(h.tricks[0].plays[0].seat, h.pitcher);            // and the bidder makes it
-    for (const t of h.tricks) assert.equal(new Set(t.plays.map((p) => p.seat)).size, 4);
+    for (const t of h.tricks) assert.equal(new Set(t.plays.map((p) => p.seat)).size, playing);
     for (let i = 1; i < 6; i++) assert.equal(h.tricks[i].plays[0].seat, h.tricks[i - 1].winner);   // a trick's winner leads the next
   }
 });

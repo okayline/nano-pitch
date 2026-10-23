@@ -25,21 +25,21 @@ function row(e) {
     const r = JSON.parse(e.record);
     ic = r.place === 1 ? "🏆" : "🃏";
     what = `Player ${esc(r.player)} ${r.place === 1 ? "beat the table" : "placed " + ORD[r.place]} in game #${esc(r.game)}`;
-    sub = `${esc(r.hands)} hands · You ${esc(r.totals[0])} · the table ${esc(r.totals.slice(1).join(" · "))}<br>moves ${short(r.moves)}`;
+    sub = `${esc(r.hands)} rounds · You ${esc(r.totals[0])} · the table ${esc(r.totals.slice(1).join(" · "))}<br>moves ${short(r.moves)}`;
   } else if (e.record === null) {
     ic = "🔒";
-    what = `A ${e.kind === "practice" ? "practice game" : e.kind === "hand" ? "hand" : "game"} on ${esc(e.day)}`;
+    what = `A ${e.kind === "practice" ? "practice game" : e.kind === "hand" ? "round" : "game"} on ${esc(e.day)}`;
     sub = "hidden until the day is over";
   } else {
     const r = JSON.parse(e.record);
     if (e.kind === "hand") {   // before v0.3, a day was one hand
       ic = "🃏";
-      what = `Player ${esc(r.player)} played ${esc(r.day)}'s hand`;
+      what = `Player ${esc(r.player)} played ${esc(r.day)}'s round`;
       sub = `bid ${esc(r.bid)} · scored ${esc(r.final)}`;
     } else {
       ic = e.kind === "practice" ? "🎲" : r.place === 1 ? "🏆" : "🃏";
       what = `Player ${esc(r.player)} ${r.place === 1 ? "beat the table" : "placed " + ORD[r.place]}${e.kind === "practice" ? " in a practice game" : ""}`;
-      sub = `${esc(r.day)} · ${esc(r.hands)} hands · ${esc(totals(r.totals))}` + (r.seed ? `<br>seed ${short(r.seed)}` : "");
+      sub = `${esc(r.day)} · ${esc(r.hands)} rounds · ${esc(totals(r.totals))}` + (r.seed ? `<br>seed ${short(r.seed)}` : "");
     }
   }
   return `<li class="entry${e.record === null ? " hidden" : ""}"><span class="ic">${ic}</span><span class="what">${what}</span>
