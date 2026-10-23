@@ -4,6 +4,11 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.11.1
+**Fri Oct 23, 2026**
+
+- Your cards: hovering one no longer makes it jump up and down. The lift moved the card off a pointer resting on its bottom edge, so it dropped, got hovered again and lifted again. Each playable card now has a 6px strip under it that lifts with it, so the pointer stays on it. Removed: the flicker.
+
 ## v0.11
 **Fri Oct 23, 2026**
 
