@@ -4,6 +4,14 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.7.1
+**Thu Oct 22, 2026**
+
+- The move list moved into the table's top right corner, like chat on a stream: the newest 5 moves, with no panel behind them, older ones fading.
+- Removed: the move list panel under your hand.
+
+---
+
 ## v0.7 — "Slow Hand"
 **Thu Oct 22, 2026**
 

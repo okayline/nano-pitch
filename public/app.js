@@ -100,7 +100,8 @@ function playBack(old, now) {
 }
 const playFromStart = () => { const v = T.view; if (!v.over) replay(v, v.hand, 0, v, draw); else draw(); };
 
-// The moves of the hand on screen, as text.
+// The moves of the hand on screen, as text. The table shows the newest FEED of them in its corner, like a stream's chat.
+const FEED = 5;
 const cardTxt = (c) => `<span class="ct${RED[suitOf(c)] ? " r" : ""}">${rk(c)}${SUIT[suitOf(c)]}</span>`;
 function moveLines(v) {
   const you = (s) => s === HUMAN, nm = (s) => (you(s) ? "<b>You</b>" : tag(s)), es = (s, a, b) => (you(s) ? a : b);
@@ -127,8 +128,6 @@ function draw() {
   $app.innerHTML = { loading: loadingScreen, game: gameScreen, account: accountScreen }[mode]() + `<div class="ver">${esc(VERSION)}</div>`;
   const box = document.getElementById("codein");
   if (box && typed != null) box.value = typed;
-  const log = document.getElementById("log");
-  if (log) log.scrollTop = log.scrollHeight;   // the newest move in view
 }
 
 function header() {
@@ -203,6 +202,7 @@ function gameScreen() {
 
   return header() + scoreboard(v) + `
     <div class="panel table">
+      <div class="feed" aria-live="polite">${moveLines(v).slice(-FEED).map((l) => `<div>${l}</div>`).join("")}</div>
       ${spot(2, "n")}${spot(1, "w")}
       <div class="center">${played(2, "tn")}${played(1, "tw")}${middle}${played(3, "te")}${played(0, "ts")}</div>
       ${spot(3, "e")}
@@ -212,8 +212,7 @@ function gameScreen() {
     ${chips}
     <div class="hand">${hand}</div>
     ${controls}
-    <p class="msg">${esc(rp ? "" : msg)}</p>
-    <div class="panel log" id="log"><div class="small">Hand ${v.no + 1}</div>${moveLines(v).map((l) => `<div>${l}</div>`).join("")}</div>`;
+    <p class="msg">${esc(rp ? "" : msg)}</p>`;
 }
 
 // ---------- the result of a hand, and of the game ----------
