@@ -132,7 +132,7 @@ function moveLines(v) {
 }
 
 // The feed's HTML: the newest FEED lines. `fresh` is how many lines this draw added, which only happens while moves play out;
-// the page animates those in `chat`. Nothing in the chat fades: a line stays as it is until a newer one pushes it off the top.
+// the page animates those in `chat`. The lines dim towards the top (style.css) but none ever fades away: a line stays until a newer one pushes it off.
 function feedHtml(v) {
   const L = moveLines(v), fresh = rp ? L.length - (L.length >= fed ? fed : 0) : 0;
   fed = L.length;
@@ -144,7 +144,8 @@ function chat() {
   const feed = document.querySelector(".feed"), n = feed ? Math.min(Number(feed.dataset.fresh) || 0, feed.children.length) : 0;
   if (!n || !feed.animate || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const rows = [...feed.children], lift = rows.slice(-n).reduce((h, r) => h + r.offsetHeight + 2, 0);   // 2px: the feed's gap
-  rows.forEach((r, i) => r.animate([{ transform: `translateY(${lift}px)`, opacity: i >= rows.length - n ? 0 : 1 }, { transform: "none", opacity: 1 }],
+  const op = rows.map((r) => Number(getComputedStyle(r).opacity));   // a line comes from the dimness of the place n lines nearer the end
+  rows.forEach((r, i) => r.animate([{ transform: `translateY(${lift}px)`, opacity: i + n < rows.length ? op[i + n] : 0 }, { transform: "none", opacity: op[i] }],
     { duration: 280, easing: "ease-out" }));
 }
 
@@ -160,7 +161,7 @@ function draw() {
 }
 
 function header() {
-  const sub = T ? `Game #${T.game} · ${T.view.over ? "Final" : "Hand " + (T.view.no + 1)}` : "";
+  const sub = T ? `${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · Game #${T.game} · ${T.view.over ? "Final" : "Hand " + (T.view.no + 1)}` : "";   // today's date on this device
   const right = mode === "account" ? `<span class="row" style="gap:14px"><a class="link" href="ledger.html">Ledger</a><button class="link" data-k="esc">Back</button></span>`
     : `<span class="row" style="gap:14px"><a class="link" href="ledger.html">Ledger</a><button class="link" data-k="a">Account</button></span>`;
   return `<header><div class="title">NANO PITCH<small>${esc(sub)}</small></div>${right}</header>`;

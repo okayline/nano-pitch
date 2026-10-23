@@ -4,6 +4,14 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.9.1
+**Thu Oct 22, 2026**
+
+- The subtitle reads "Thu, Oct 22 · Game #N · Hand N" again, with today's date on your device. Removed: the v0.9 subtitle with no date.
+- The chat dims towards the top again (the oldest line stays faintly readable, never gone). Removed: v0.9's chat with every line at full strength.
+
+---
+
 ## v0.9 — "Any Game"
 **Thu Oct 22, 2026**
 

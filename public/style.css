@@ -111,6 +111,9 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
         text-shadow: none; }   /* no glow in the chat, not on the names either */
 .feed .tag.s1, .feed .tag.s2, .feed .tag.s3 { text-shadow: none; }
 .feed div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* one line per move, never two */
+.feed div:nth-last-child(n+3) { opacity: .7; }   /* dimmer towards the top, but the oldest line stays readable */
+.feed div:nth-last-child(n+4) { opacity: .45; }
+.feed div:nth-last-child(n+5) { opacity: .25; }
 .ct { font-weight: 800; color: var(--ink); }
 .feed .ct { font-weight: 400; }   /* in the chat the names are bold and the moves are not */
 .seat.turn .bid .chip { opacity: .5; }   /* the bid chip stays dim, even on its seat's turn */
