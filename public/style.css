@@ -145,7 +145,6 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .kv > span:first-child { color: var(--mute); white-space: nowrap; }
 .kv > span:last-child { text-align: right; display: flex; align-items: center; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
 .up { color: #7dffb0; } .down { color: #ff9db8; }
-.hands { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* account */
 .avatar { flex: none; width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel2); font-size: 30px; line-height: 1; }
@@ -164,3 +163,16 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .entry .h { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; color: var(--dim); }
 .entry.hidden { opacity: .7; }
 
+
+/* the result screen's grid: a row a seat, a column a round; the bubbles keep their size and the rounds scroll sideways, the name and total stay put */
+.rscroll { overflow-x: auto; padding-bottom: 4px; }
+.rgrid { display: grid; grid-template-columns: 104px 44px repeat(var(--rounds), 44px); gap: 6px 0; align-items: center; width: max-content; }
+.rgrid > span { white-space: nowrap; }
+.rgrid .hd { text-align: center; font-size: 11px; color: var(--dim); }
+.rgrid .chip { justify-content: center; padding: 5px 0; width: 40px; margin: 0 2px; font-size: 13px; }
+.rgrid .c0, .rgrid .c1 { position: sticky; z-index: 1; background: var(--panel); align-self: stretch; display: flex; align-items: center; }   /* the whole height of the row, so nothing shows above or below them */
+.rgrid .c0 { left: 0; overflow: hidden; font-size: 12px; gap: 4px; }
+.rgrid .c1 { left: 104px; justify-content: center; box-shadow: 6px 0 6px -4px rgba(0,0,0,.6); }   /* a soft edge where the rounds slide under */
+.rgrid .tot { font-family: var(--meme); font-size: 20px; }
+.rgrid .tot.win { text-shadow: 0 0 10px var(--b); }
+.rgrid .you { color: var(--ink); }

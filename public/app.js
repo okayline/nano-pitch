@@ -376,7 +376,14 @@ function finalScreen() {
   const winner = v.totals.indexOf(Math.max(...v.totals));
   const headline = `${esc(nameOf(winner).toUpperCase())} WINS`;
   const sub = place === 1 ? `first to ${v.target} in ${v.history.length} rounds` : `<span class="winname">${tag(winner)}</span> got there first · you placed ${ORD[place]}`;
-  const finals = v.history.map((h) => { const n = h.final[HUMAN]; return `<span class="chip ${n > 0 ? "up" : n < 0 ? "down" : ""}">${signed(n)}</span>`; }).join("");
+  // Every round for every seat: a row each (name, total, then one bubble a round). The bubbles keep one size and the rounds scroll
+  // sideways when there are more than fit; the name and the total stay put on the left.
+  const bub = (n) => `<span class="chip ${n > 0 ? "up" : n < 0 ? "down" : ""}">${signed(n)}</span>`;
+  const grid = `<div class="rgrid" style="--rounds:${v.history.length}">
+      <span class="c0 hd"></span><span class="c1 hd">Total</span>${v.history.map((h) => `<span class="hd">${h.no + 1}</span>`).join("")}
+      ${[0, 1, 2, 3].map((s) => `<span class="c0 nm${s === HUMAN ? " you" : ""}">${pfp(s)} ${s === HUMAN && myName ? `<span class="tag">${esc(myName)}</span>` : tag(s)}</span>
+        <span class="c1 tot${s === HUMAN ? " you" : ""}${v.totals[s] === Math.max(...v.totals) ? " win" : ""}">${v.totals[s]}</span>${v.history.map((h) => bub(h.final[s])).join("")}`).join("")}
+    </div>`;
   let field = "";
   if (f && f.games > 0) {
     const won = Math.round((100 * f.places[0]) / f.games);
@@ -394,7 +401,7 @@ function finalScreen() {
   return header() + `
     <div class="panel"><div class="big">${headline}</div><p class="hint" style="margin:6px 0 0">${sub}</p></div>
     ${scoreboard(v, true)}
-    <div class="panel"><div class="small" style="margin-bottom:8px">Your score each round</div><div class="hands">${finals}</div></div>
+    <div class="panel"><div class="small" style="margin-bottom:8px">Each round</div><div class="rscroll">${grid}</div></div>
     ${field}
     ${memory}
     ${msg ? `<p class="msg">${esc(msg)}</p>` : ""}
