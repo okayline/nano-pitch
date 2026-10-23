@@ -78,6 +78,7 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .tag.s1 { color: var(--a); text-shadow: 0 0 8px var(--a); }
 .tag.s2 { color: var(--b); text-shadow: 0 0 8px var(--b); }
 .tag.s3 { color: var(--c); text-shadow: 0 0 8px var(--c); }
+.tag.v { color: var(--mute); }   /* a viewer in the chat: not at the table, so no seat's colour */
 
 /* cards */
 .pc { position: relative; width: 44px; aspect-ratio: 5 / 7; border-radius: 8px; background: var(--face); color: var(--black); border: 0; padding: 0;

@@ -11,6 +11,7 @@ Newest first. Times are Hawaii time (HST).
 - Fixed: when it came to your turn the arrow and "your bid" went blank for a moment and then came back. They now stay on you from the last bot's move. Removed: the blank moment.
 - Table: the cards of a finished trick no longer dim; only the winner's glow stays. Removed: the dimming of the trick's other cards.
 - Scoreboard: each score sits next to its emoji, with the name under them (it was under the name). Removed: the stacked emoji / name / score layout.
+- Chat: more of it, and it reacts to the game. Six viewers who aren't at the table (made-up names, the same six all game) comment on tricks, on a bid of 4 and on how a round ended; the bidder says something when they make it or get set; bots' emoji and trick reactions come a bit more often. Removed: the three bots as the ones commenting on tricks.
 - Registry: each checkpoint now carries the finished game's public facts (kind, number, day, rounds, place, score, bids, trumps). Removed: the bare checkpoint with no facts.
 
 ---

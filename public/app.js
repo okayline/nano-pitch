@@ -29,7 +29,26 @@ const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const rk = (c) => RANK[rankOf(c)] || String(rankOf(c));
 const signed = (n) => (n > 0 ? "+" + n : String(n));
 // Seats in play order: you, then the table's three hands clockwise. Their names and profile pics come with the game (view.cast).
-const pfp = (seat) => (seat === HUMAN ? myPfp : T.view.cast[seat].pfp);
+const pfp = (seat) => (seat === HUMAN ? myPfp : seat >= VIEWER ? viewers()[seat - VIEWER].pfp : T.view.cast[seat].pfp);
+// The chat's other voices: names that are not at the table, only watching, who comment on the game. Seats VIEWER to VIEWER + 5 stand for
+// them in the chat. A game has the same six every time (drawn from its number, with names from the same lists as the bots), none
+// sharing a name with the table or with you. They are made up: no player is ever one of them.
+const VIEWER = 4, VIEWERS = 6;
+let viewed = null;
+function viewers() {
+  const key = `${T.daily ? "d" : "g"}${T.game}|${myName}|${[1, 2, 3].map((x) => T.view.cast[x].name).join()}`;
+  if (viewed && viewed.key === key) return viewed.list;
+  const list = [], taken = (n) => [myName, ...[1, 2, 3].map((x) => T.view.cast[x].name), ...list.map((v) => v.name)].some((x) => x && x.toLowerCase() === n.toLowerCase());
+  for (let k = 0; k < VIEWERS; k++) {
+    let h = [...`${T.daily ? "d" : "g"}${T.game}|viewer${k}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7), name = "";
+    for (let i = 0; i < 50 && (!name || taken(name)); i++) { h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; name = gamerTag(() => h / 4294967296); }
+    h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
+    list.push({ name, pfp: PFP_POOL[h % PFP_POOL.length] });
+  }
+  viewed = { key, list };
+  return list;
+}
+
 // A bot's name. If it is the player's own name, the bot gets another (the same one every time for that game and seat), so no two seats share a name.
 function botName(seat) {
   const name = T.view.cast[seat].name, taken = (n) => [myName, ...[1, 2, 3].map((s) => T.view.cast[s].name)].some((x) => x && x.toLowerCase() === n.toLowerCase());
@@ -38,7 +57,7 @@ function botName(seat) {
   for (let i = 0; i < 50; i++) { h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; const alt = gamerTag(() => h / 4294967296); if (!taken(alt)) return alt; }
   return name;
 }
-const tag = (seat) => (seat === HUMAN ? `<b>You</b>` : `<span class="tag s${seat}">${esc(botName(seat))}</span>`);   // a hand's name, in its seat's colour
+const tag = (seat) => (seat === HUMAN ? `<b>You</b>` : seat >= VIEWER ? `<span class="tag v">${esc(viewers()[seat - VIEWER].name)}</span>` : `<span class="tag s${seat}">${esc(botName(seat))}</span>`);   // a hand's name, in its seat's colour
 const who = (seat) => `${pfp(seat)} ${tag(seat)}`;
 const suitIcon = (s) => `<b style="color:${RED[s] ? "var(--red)" : "var(--ink)"}">${SUIT[s]}</b>`;
 const nameOf = (seat) => (seat === HUMAN ? myName || "You" : botName(seat));   // a seat's plain name, for headlines
@@ -91,6 +110,7 @@ function frame({ h, base, tmpl, k, evs, stage }) {
   return {
     ...tmpl, dealer: h.dealer, bids: h.bids.slice(0, nb), tricks: h.tricks.slice(0, full), trick: plays,
     counts, out, hand: base.filter((c) => !mine.includes(c)), phase: settled ? "play" : "bid",
+    made: k >= evs.length ? h.made : undefined,   // how the round ended, known once its last move is shown (the chat reacts to it)
     pitcher: settled ? h.pitcher : null, bid: settled ? h.bid : 0, trump: cards.length ? suitOf(cards[0].card) : null,
     turn: k < evs.length ? evs[k].seat : (h.turn ?? null), legal: null, bidOptions: null,
     hold: stage < 3 && k > 0 && !evs[k - 1].skip ? evs.slice(0, k).filter((e) => !e.skip).length - 1 : null, stage,   // the chat holds back the newest move's lines in turn: the move itself at stage 1, its follow-ups (its emoji, who took the trick, who has the bid) at stage 2, the chatters' reactions at stage 3
@@ -124,7 +144,7 @@ function replay(h, base, from, tmpl, then) {
 function playBack(old, now) {
   if (now.history.length > old.history.length) {   // the move ended a hand: finish it, then its result screen shows
     const s = now.history[old.history.length];
-    return replay({ dealer: s.dealer, out: s.out, bids: s.bids, tricks: s.tricks, trick: [], pitcher: s.pitcher, bid: s.bid }, old.hand, progress(old), old, draw);
+    return replay({ dealer: s.dealer, out: s.out, bids: s.bids, tricks: s.tricks, trick: [], pitcher: s.pitcher, bid: s.bid, made: s.made }, old.hand, progress(old), old, draw);
   }
   replay(now, old.hand, progress(old), now, draw);
 }
@@ -150,12 +170,18 @@ function moveLines(v) {
   };
   const SAID = new Set(["nope", "hmm...next"]);
   const REACT = { big: ["nr", "nt", "oof", "rip", "ez", "💀", "😭", "🔥", "😬"], plain: ["nr", "nt", "gg", "lol", "hm", "👀", "🫡", "😮"] };   // what the chatters say about a trick
+  // What the bots say about the bidding and about how a round ended: someone bidding 4, the bidder making it or getting set.
+  const CHIME = { bold: ["bold", "😳", "oh ok", "???", "🫣"], made_self: ["ez", "W", "easy", "💪", "told u"], set_self: ["rip", "oof", "💀", "bruh", "😭"],
+    made_other: ["nice", "gg", "ok ok", "👀", "damn"], set_other: ["lol", "L", "😬", "oof", "rip"] };
+  const chatter = (i) => VIEWER + (spin(i, 3, "who") % VIEWERS);   // one of the viewers, who comment on what the table does
+  const chime = (kind, i) => CHIME[kind][spin(i, 6, kind) % CHIME[kind].length];
   const word = (kind, i, s) => WORDS[kind][spin(i, s, kind) % WORDS[kind].length];
   const card = (kind, i, p) => (p.seat === HUMAN || spin(i, p.seat, "bare") % 10 < 6 ? cardTxt(p.card) : `${word(kind, i, p.seat)} ${cardTxt(p.card)}`);   // most of the time just the card
   const E = [];   // [seat, text, index of the move it belongs to, is it a follow-up (0 the move, 1 a follow-up, 2 a chatter's reaction), is it said or played, a card or a spoken pass (those read "name: card", the rest "name folds")]
   v.bids.forEach((b, j) => {
     const said = !b.forced && !b.bid && SAID.has(word("pass", E.length, b.seat));   // "nope" and "hmm...next" are said, "passes" and "folds" are done
     E.push([b.seat, b.forced ? "stuck 2" : b.bid ? `${word("bid", E.length, b.seat)} ${b.bid}` : word("pass", E.length, b.seat), j, false, said]);
+    if (b.bid === 4 && spin(E.length, 8, "bold") % 100 < 60) E.push([chatter(E.length), chime("bold", E.length), j, 2, true]);   // a 4 gets a reaction most of the time
   });
   if (v.pitcher !== null && !v.bids.find((b) => b.seat === v.pitcher).forced) E.push([v.pitcher, `${word("have", E.length, v.pitcher)} ${v.bid}`, v.bids.length - 1, 1, false]);
   let first = true, mv = v.bids.length;
@@ -163,17 +189,25 @@ function moveLines(v) {
     for (const p of t.plays) { E.push([p.seat, card(first ? "lead" : "play", E.length, p), mv++, false, true]); first = false; }
     if (t.winner !== null) {
       E.push([t.winner, word("win", E.length, t.winner), mv - 1, 1, false]);
-      // The chatters comment on the trick: a ten or the trump jack in it gets a reaction most of the time, any other trick now and then.
+      // The viewers comment on the trick: a ten or the trump jack in it gets a reaction most of the time, any other trick now and then.
       const big = t.plays.some((p) => rankOf(p.card) === 10 || (suitOf(p.card) === v.trump && rankOf(p.card) === 11));
-      if (spin(E.length, 9, "react") % 100 < (big ? 70 : 25)) {
+      if (spin(E.length, 9, "react") % 100 < (big ? 70 : 40)) {
         const pool = REACT[big ? "big" : "plain"];
-        E.push([1 + (spin(E.length, 7, "who") % 3), pool[spin(E.length, 5, "what") % pool.length], mv - 1, 2, true]);
+        E.push([chatter(E.length), pool[spin(E.length, 5, "what") % pool.length], mv - 1, 2, true]);
       }
     }
   }
+  // How the round ended, once its last move is shown: the bidder (or the chatters, if it was you) say something about it.
+  if (typeof v.made === "boolean" && v.pitcher !== null) {
+    const last = mv - 1, kind = v.made ? "made" : "set", roll = (n) => spin(E.length, n, "end") % 100;
+    if (v.pitcher !== HUMAN) {
+      if (roll(11) < 65) E.push([v.pitcher, chime(kind + "_self", E.length), last, 2, true]);
+      if (roll(12) < (v.made ? 35 : 55)) E.push([chatter(E.length), chime(kind + "_other", E.length), last, 2, true]);
+    } else if (roll(13) < 70) E.push([chatter(E.length), chime(kind + "_other", E.length), last, 2, true]);
+  }
   // Now and then a bot posts just an emoji after its move. Which moves and which emoji come from the move's place in the hand, so a replay or reload chats the same.
   const EMOTE = [["😴", "🥱", "💤", "🫠"], ["🗿", "😐", "💀", "🔥"], ["😤", "🥶", "🤬", "🧊"], ["🙂", "😶", "👍", "🤷"]];   // by personality: safe, bold, crowd, none
-  const mood = (s, i) => { const h = [...`${v.no}|${i}|${s}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7); return h % 8 === 0 ? EMOTE[v.cast[s].persona ?? 3][(h >> 4) % 4] : null; };
+  const mood = (s, i) => { const h = [...`${v.no}|${i}|${s}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7); return h % 6 === 0 ? EMOTE[v.cast[s].persona ?? 3][(h >> 4) % 4] : null; };
   return E.flatMap(([s, text, ev, late, played], i) => {
     if (s === HUMAN && !played) return [];   // your cards are in the chat; your bids and the lines after them aren't
     const held = ev === v.hold, shown = !held || late < v.stage;   // while a move is the newest on a replaying table, its lines wait for their stage
