@@ -168,10 +168,9 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 
 
 /* the result screen's grid: a row a seat, a column a round; the bubbles keep their size and the rounds scroll sideways, the name and total stay put */
-.rscroll { overflow-x: auto; padding-bottom: 16px; scrollbar-width: thin; scroll-snap-type: x mandatory; scroll-padding-left: 64px; }   /* room under the last row, so the scroll bar never sits over it */
+.rscroll { overflow-x: auto; padding-bottom: 16px; scrollbar-width: thin; }   /* room under the last row, so the scroll bar never sits over it */
 .rgrid { display: grid; grid-template-columns: 34px 30px repeat(var(--rounds), 44px); gap: 6px 0; align-items: center; width: max-content; }   /* the first two columns are narrow so six rounds fit on a phone */
 .rgrid > span { white-space: nowrap; }
-.rgrid > span:not(.c0):not(.c1) { scroll-snap-align: start; }   /* a round comes to rest against the left columns, never half hidden */
 .rgrid .hd { text-align: center; font-size: 11px; color: var(--dim); }
 .rgrid .chip { justify-content: center; padding: 5px 0; width: 40px; margin: 0 2px; font-size: 13px; }
 .rgrid .c0, .rgrid .c1 { position: sticky; z-index: 1; background: var(--panel); align-self: stretch; display: flex; align-items: center; }   /* the whole height of the row, so nothing shows above or below them */
