@@ -380,7 +380,7 @@ function finalScreen() {
   // sideways when there are more than fit; the emoji and the total stay put on the left.
   const bub = (n) => `<span class="chip ${n > 0 ? "up" : n < 0 ? "down" : ""}">${signed(n)}</span>`;
   const grid = `<div class="rgrid" style="--rounds:${v.history.length}">
-      <span class="c0 hd"></span><span class="c1 hd">Total</span>${v.history.map((h) => `<span class="hd">${h.no + 1}</span>`).join("")}
+      <span class="c0 hd"></span><span class="c1 hd"></span>${v.history.map((h) => `<span class="hd">${h.no + 1}</span>`).join("")}
       ${[0, 1, 2, 3].map((s) => `<span class="c0 nm${s === HUMAN ? " you" : ""}" title="${esc(nameOf(s))}">${pfp(s)}</span>
         <span class="c1 tot${s === HUMAN ? " you" : ""}${v.totals[s] === Math.max(...v.totals) ? " win" : ""}">${v.totals[s]}</span>${v.history.map((h) => bub(h.final[s])).join("")}`).join("")}
     </div>`;
@@ -401,7 +401,7 @@ function finalScreen() {
   return header() + `
     <div class="panel"><div class="big">${headline}</div><p class="hint" style="margin:6px 0 0">${sub}</p></div>
     ${scoreboard(v, true)}
-    <div class="panel"><div class="small" style="margin-bottom:8px">Each round</div><div class="rscroll">${grid}</div></div>
+    <div class="panel"><div class="rscroll">${grid}</div></div>
     ${field}
     ${memory}
     ${msg ? `<p class="msg">${esc(msg)}</p>` : ""}
