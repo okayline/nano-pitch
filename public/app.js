@@ -3,7 +3,7 @@
 // and games are numbered: everyone plays 1, 2, 3... in order. The look follows aura-farm:
 // dark, purple glow, rounded panels. Everything is drawn into #app from the last answer of /api/game, /api/play or /api/act.
 import { VERSION } from "./version.js";
-import { suitOf, rankOf, HUMAN, PFP_POOL } from "./engine/pitch.js";
+import { suitOf, rankOf, HUMAN, PFP_POOL, gamerTag } from "./engine/pitch.js";
 
 const SUIT = ["♣", "♦", "♥", "♠"];
 const RED = [false, true, true, false];
@@ -30,10 +30,18 @@ const rk = (c) => RANK[rankOf(c)] || String(rankOf(c));
 const signed = (n) => (n > 0 ? "+" + n : String(n));
 // Seats in play order: you, then the table's three hands clockwise. Their names and profile pics come with the game (view.cast).
 const pfp = (seat) => (seat === HUMAN ? myPfp : T.view.cast[seat].pfp);
-const tag = (seat) => (seat === HUMAN ? `<b>You</b>` : `<span class="tag s${seat}">${esc(T.view.cast[seat].name)}</span>`);   // a hand's name, in its seat's colour
+// A bot's name. If it is the player's own name, the bot gets another (the same one every time for that game and seat), so no two seats share a name.
+function botName(seat) {
+  const name = T.view.cast[seat].name, taken = (n) => [myName, ...[1, 2, 3].map((s) => T.view.cast[s].name)].some((x) => x && x.toLowerCase() === n.toLowerCase());
+  if (!myName || name.toLowerCase() !== myName.toLowerCase()) return name;
+  let h = [...`${T.game}|${seat}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7);
+  for (let i = 0; i < 50; i++) { h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; const alt = gamerTag(() => h / 4294967296); if (!taken(alt)) return alt; }
+  return name;
+}
+const tag = (seat) => (seat === HUMAN ? `<b>You</b>` : `<span class="tag s${seat}">${esc(botName(seat))}</span>`);   // a hand's name, in its seat's colour
 const who = (seat) => `${pfp(seat)} ${tag(seat)}`;
 const suitIcon = (s) => `<b style="color:${RED[s] ? "var(--red)" : "var(--ink)"}">${SUIT[s]}</b>`;
-const nameOf = (seat) => (seat === HUMAN ? myName || "You" : T.view.cast[seat].name);   // a seat's plain name, for headlines
+const nameOf = (seat) => (seat === HUMAN ? myName || "You" : botName(seat));   // a seat's plain name, for headlines
 
 function card(c, cls = "", k = null) {
   const inner = `<b>${rk(c)}</b><i>${SUIT[suitOf(c)]}</i>`, red = RED[suitOf(c)] ? " red" : "";
@@ -48,16 +56,16 @@ const backs = (n, out) => `<div class="backs">${"<i></i>".repeat(n)}${out ? SAT 
 // time from what it already showed. A hand's moves in order are its bids, then every card of its finished tricks, then the
 // trick on the table; a finished hand's come from its summary in `history`.
 
-export const PACE = { move: 1300, trick: 2650, east: 650, skip: 900 };   // ms after a bid or card, after the card that ends a trick, after East's, when it is your turn next, and for each beat of a seat sitting out
+export const PACE = { move: 1300, trick: 2650, east: 650, skip: 350 };   // ms after a bid or card, after the card that ends a trick, after East's, when it is your turn next, and for the quick hop of the turn over a seat sitting out
 let rp = null;   // the replay on screen: { h, base, tmpl, k, evs }
 let frozen = null;   // the table as the last replay left it: the round's summary pops up over it
 
-// A trick's moves in turn order from its leader. A seat that sits out gets two beats: the turn reaches it (skip "show": its "Sat out" lights up), then the turn moves on (skip "leave").
+// A trick's moves in turn order from its leader. A seat that sits out gets one quick move: the turn lands on it and straight away moves on.
 function trickEvents(plays, out, trick) {
   if (!plays.length) return [];
   const evs = []; let seat = plays[0].seat, i = 0;
   for (let n = 0; n < 4; n++, seat = (seat + 1) % 4) {
-    if (out && out[seat]) evs.push({ seat, skip: "show", trick }, { seat, skip: "leave", trick });
+    if (out && out[seat]) evs.push({ seat, skip: true, trick });
     else if (i < plays.length) evs.push({ ...plays[i++], trick });
     else break;   // the seat whose card hasn't been played yet
   }
@@ -73,7 +81,7 @@ function frame({ h, base, tmpl, k, evs, stage }) {
   const nb = Math.min(k, h.bids.length), shown = evs.slice(h.bids.length, Math.max(h.bids.length, k));
   const full = h.tricks.filter((_, i) => lastOf(evs, i) < k).length;   // tricks whose last move has been shown
   const cards = shown.filter((e) => e.card !== undefined), plays = cards.filter((e) => e.trick === full).map(({ seat, card }) => ({ seat, card }));
-  const out = [0, 1, 2, 3].map((s) => shown.some((e) => e.skip === "show" && e.trick === full && e.seat === s));   // seats the turn has passed over in this trick
+  const out = [0, 1, 2, 3].map((s) => shown.some((e) => e.skip && e.seat === s) || !!(evs[k]?.skip && evs[k].seat === s));   // once the turn has reached a seat that sits out, it says "Sat out" for the rest of the round
   const counts = [6, 6, 6, 6], mine = [];
   for (const p of cards) { counts[p.seat]--; if (p.seat === HUMAN) mine.push(p.card); }
   const settled = nb === 4;
@@ -99,7 +107,7 @@ function replay(h, base, from, tmpl, then) {
     run.k++; run.stage = 0; draw();
     const k = run.k;
     const ev = evs[k - 1];
-    const wait = ev.skip && !ends.has(k) ? PACE.skip : ends.has(k) ? PACE.trick : k >= evs.length && ev.seat === 3 ? PACE.east : PACE.move;
+    const wait = ends.has(k) ? PACE.trick : ev.skip ? PACE.move - PACE.skip : evs[k]?.skip ? PACE.skip : k >= evs.length && ev.seat === 3 ? PACE.east : PACE.move;   // the turn hops over a seat that sits out quickly, and the next move comes as late as it would have
     // Chat arrives like a stream's: each line shows up a moment after its move, at a different moment each time (picked from the move's place in the hand): the move 12-40% of the way to the next move, its follow-ups (emoji, who took it) 42-60%, the chatters' reactions 68-85%.
     const jit = (salt) => ([...`${tmpl.no}|${k}|${salt}`].reduce((x, c) => (Math.imul(x, 31) + c.charCodeAt(0)) >>> 0, 7) >>> 3) % 1000 / 1000;
     const at = (stage, from, span) => setTimeout(() => { if (rp === run && run.k === k) { run.stage = stage; draw(); } }, wait * (from + span * jit(stage)));
@@ -174,7 +182,9 @@ function moveLines(v) {
 // The feed's HTML: the newest FEED lines. `fresh` is how many lines this draw added, which only happens while moves play out;
 // the page animates those in `chat`. The lines dim towards the top (style.css) but none ever fades away: a line stays until a newer one pushes it off.
 function feedHtml(v) {
-  const L = moveLines(v), fresh = rp ? L.length - (L.length >= fed ? fed : 0) : 0;
+  // The chat carries on from round to round: the lines of the rounds before this one come first.
+  const past = T.view.history.filter((h) => h.no < v.no).flatMap((h) => moveLines({ ...h, trick: [], cast: T.view.cast, hold: null }));
+  const L = [...past, ...moveLines(v)], fresh = rp ? L.length - (L.length >= fed ? fed : 0) : 0;
   fed = L.length;
   return `<div class="feed" aria-live="polite" data-fresh="${fresh}">${L.slice(-FEED).map((l) => `<div>${l}</div>`).join("")}</div>`;
 }
@@ -215,7 +225,7 @@ function scoreboard(v) {
   const cell = (seat) => {
     const t = v.totals[seat], pct = Math.min(t < 0 ? 120 : 100, (100 * Math.abs(t)) / v.target);   // below zero the bar runs left, out of its frame
     return `<div class="score${seat === HUMAN ? " you" : ""}${v.totals[seat] === top && top > 0 ? " lead" : ""}">
-      <div class="em">${pfp(seat)}</div><div class="nm">${tag(seat)}</div><div class="pt">${t}</div><div class="bar${t < 0 ? " neg" : ""}"><i style="width:${pct.toFixed(1)}%"></i></div></div>`;
+      <div class="em">${pfp(seat)}</div><div class="nm">${seat === HUMAN && myName ? `<span class="tag">${esc(myName)}</span>` : tag(seat)}</div><div class="pt">${t}</div><div class="bar${t < 0 ? " neg" : ""}"><i style="width:${pct.toFixed(1)}%"></i></div></div>`;
   };
   return `<div class="panel"><div class="scores">${[0, 1, 2, 3].map(cell).join("")}</div></div>`;
 }

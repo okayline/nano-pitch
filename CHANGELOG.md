@@ -4,6 +4,15 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.9.4
+**Thu Oct 22, 2026**
+
+- Chat: it sits in a fixed box with the newest line at the bottom, so a new line pushes the older ones up and nothing jumps; it carries on from round to round instead of starting empty; and it fades out towards the top (the first line almost gone, full strength by the fourth). Removed: the chat growing downward from the top and the jump it caused, and the chat clearing at each round.
+- Sitting out: the turn lands on a seat that sits out and moves on in about a third of a second, its "Sat out" stays up for the rest of the round and is no longer dimmed with its cards. Removed: the two-beat pause on a sat-out seat, and "Sat out" showing only during one trick.
+- Names: your name is on the scoreboard instead of "You", and a bot that was dealt your name gets another one. Removed: "You" on the scoreboard and two seats with the same name.
+
+---
+
 ## v0.9.3
 **Thu Oct 22, 2026**
 
