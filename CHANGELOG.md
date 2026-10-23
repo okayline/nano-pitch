@@ -4,6 +4,14 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.9.6
+**Thu Oct 22, 2026**
+
+- Chat: a pass no longer reads "folds" (it is "passes", "nope" or "hmm...next"). Removed: "folds".
+- Middle of the table: nothing shows when nobody has the turn. Removed: the 🤖 and the ✅ / 💥 over the round summary.
+
+---
+
 ## v0.9.5
 **Thu Oct 22, 2026**
 

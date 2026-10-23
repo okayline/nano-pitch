@@ -143,7 +143,7 @@ function moveLines(v) {
     play: ["slaps down", "drops", "serves"],
     lead: ["leads", "starts", "opens"],
     win: ["takes hand", "takes it", "gets it", "W"],
-    pass: ["passes", "nope", "folds", "hmm...next"],
+    pass: ["passes", "nope", "hmm...next"],
     bid: ["bids", "goes"],
     have: ["gets their", "gets", "bids"],
   };
@@ -268,9 +268,8 @@ function gameScreen() {
   const spot = (seat, cls) => `<div class="seat ${cls}${v.turn === seat ? " turn" : ""}">
       <div class="nm">${pfp(seat)} ${tag(seat)}${dealer(seat)}</div>${backs(v.counts[seat], v.out && v.out[seat])}<div class="bid">${bidText(v, seat)}</div></div>`;
   const ARROW = ["⬇️", "⬅️", "⬆️", "➡️"];   // by seat: you below, West left, North above, East right
-  const res = popup ? T.view.history[seen] : null;
-  const face = res ? (res.made ? "✅" : "💥") : v.turn === null ? ICON.table : v.out && v.out[v.turn] && v.phase === "play" ? "💤" : ARROW[v.turn];   // the arrow points at whose move it is; a seat sitting out gets 💤; a finished round shows ✅ made / 💥 set
-  const middle = tt.plays.length ? "" : `<div class="mid"><span class="bot">${face}</span>${v.phase === "bid" ? "<br>bidding" : ""}</div>`;
+  const face = v.turn === null ? "" : v.out && v.out[v.turn] && v.phase === "play" ? "💤" : ARROW[v.turn];   // the arrow points at whose move it is; a seat sitting out gets 💤; nobody's turn shows nothing
+  const middle = tt.plays.length || !face ? "" : `<div class="mid"><span class="bot">${face}</span>${v.phase === "bid" ? "<br>bidding" : ""}</div>`;
 
   const legal = new Set(v.legal || []), canPlay = !rp && v.phase === "play" && v.turn === HUMAN, bidTurn = !rp && v.phase === "bid" && v.turn === HUMAN;
   const hand = v.hand.length ? v.hand.map((c) => (canPlay && legal.has(c) ? card(c, "ok", "c" + c) : card(c, canPlay ? "no" : bidTurn ? "dim" : ""))).join("")
