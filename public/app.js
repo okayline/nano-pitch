@@ -3,7 +3,7 @@
 // and games are numbered: everyone plays 1, 2, 3... in order. The look follows aura-farm:
 // dark, purple glow, rounded panels. Everything is drawn into #app from the last answer of /api/game, /api/play or /api/act.
 import { VERSION } from "./version.js";
-import { suitOf, rankOf, HUMAN, PFP_POOL, gamerTag } from "./engine/pitch.js";
+import { suitOf, rankOf, gamePoints, HUMAN, PFP_POOL, gamerTag } from "./engine/pitch.js";
 
 const SUIT = ["♣", "♦", "♥", "♠"];
 const RED = [false, true, true, false];
@@ -306,6 +306,26 @@ function tableTrick(v) {
   return last ? { plays: last.plays, done: true, winner: last.winner } : { plays: [], done: false };
 }
 
+// What each seat has so far this round, from the finished tricks and the one on the table: the High and Low trump (whoever played
+// them, the actual cards), the Jack (once its trick is won) and the Game card points in the tricks it has won. Same rules as scoreHand
+// in the engine. `cards` is one entry per card (High, then Low, then Jack), so one card in two roles is drawn once.
+function held(v) {
+  const H = [0, 1, 2, 3].map(() => ({ cards: [], pts: 0 }));
+  if (v.trump === null) return H;
+  const give = (seat, c, role) => { const x = H[seat].cards.find((y) => y.c === c); if (x) x.roles += role; else H[seat].cards.push({ c, roles: role }); };
+  const trumps = [...v.tricks.flatMap((t) => t.plays), ...v.trick].filter((p) => suitOf(p.card) === v.trump);
+  if (trumps.length) {
+    const hi = trumps.reduce((a, p) => (rankOf(p.card) > rankOf(a.card) ? p : a)), lo = trumps.reduce((a, p) => (rankOf(p.card) < rankOf(a.card) ? p : a));
+    give(hi.seat, hi.card, "👑");
+    give(lo.seat, lo.card, "🪶");
+  }
+  for (const t of v.tricks) for (const p of t.plays) {
+    H[t.winner].pts += gamePoints(p.card);
+    if (suitOf(p.card) === v.trump && rankOf(p.card) === 11) give(t.winner, p.card, "🃏");
+  }
+  return H;
+}
+
 function gameScreen() {
   const popup = !rp && pending();   // a finished round's summary shows over the table
   const v = rp ? frame(rp) : popup && frozen ? frozen : T.view;
@@ -315,9 +335,18 @@ function gameScreen() {
     const p = tt.plays.find((x) => x.seat === seat);
     return p ? `<div class="${cls}">${card(p.card, tt.done && tt.winner === seat ? "win" : "")}</div>` : "";
   };
+  const H = held(v), own = (seat, stack) => {   // the cards held, then the Game points; in a column (`stack`) the points come first, which is the bottom
+    if (v.trump === null) return "";
+    const cards = H[seat].cards.map((x) => card(x.c, "tiny")).join(""), pts = H[seat].pts ? `<span class="gp">${H[seat].pts}</span>` : "";   // no Game points yet: no number card
+    if (!cards && !pts) return "";
+    return `<div class="own">${stack ? pts + cards : cards + pts}</div>`;
+  };
   const dealer = (seat) => (v.dealer === seat ? '<span class="d">D</span>' : "");
-  const spot = (seat, cls) => `<div class="seat ${cls}${v.turn === seat ? " turn" : ""}">
-      <div class="nm">${pfp(seat)} ${tag(seat)}${dealer(seat)}</div>${backs(v.counts[seat], v.out && v.out[seat])}<div class="bid">${bidText(v, seat)}</div></div>`;
+  const spot = (seat, cls) => {   // N, W and E: the held cards stand in a column beside the hand (left of it, but right of it for E), starting at the bottom
+    const bk = backs(v.counts[seat], v.out && v.out[seat]), col = own(seat, true), side = cls === "e" ? bk + col : col + bk;
+    return `<div class="seat ${cls}${v.turn === seat ? " turn" : ""}">
+      <div class="nm">${pfp(seat)} ${tag(seat)}${dealer(seat)}</div><div class="bk">${side}</div><div class="bid">${bidText(v, seat)}</div></div>`;
+  };
   const ARROW = ["⬇️", "⬅️", "⬆️", "➡️"];   // by seat: you below, West left, North above, East right
   const face = v.turn === null ? "" : v.out && v.out[v.turn] && v.phase === "play" ? "💤" : ARROW[v.turn];   // the arrow points at whose move it is; a seat sitting out gets 💤; nobody's turn shows nothing
   const middle = tt.plays.length || !face ? "" : `<div class="mid"><span class="bot">${face}</span>${v.phase === "bid" ? "<br>bidding" : ""}</div>`;
@@ -340,7 +369,7 @@ function gameScreen() {
       <div class="center">${played(2, "tn")}${played(1, "tw")}${middle}${played(3, "te")}${played(0, "ts")}</div>
       ${spot(3, "e")}
       ${bidding}
-      <div class="seat s${v.turn === HUMAN ? " turn" : ""}"><div class="nm">${pfp(0)} ${myName ? `<span class="tag">${esc(myName)}</span>` : tag(0)}${dealer(0)}</div><div class="bid">${bidText(v, 0)}</div></div>
+      <div class="seat s${v.turn === HUMAN ? " turn" : ""}"><div class="nm">${pfp(0)} ${myName ? `<span class="tag">${esc(myName)}</span>` : tag(0)}${dealer(0)}</div><div class="bid">${bidText(v, 0)}</div>${own(0, false)}</div>
       <div class="hand">${hand}${v.out && v.out[0] ? SAT : ""}</div>
       ${popup ? `<div class="popup">${handPopup(T.view.history[seen])}</div>` : ""}
     </div>

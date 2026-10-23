@@ -56,6 +56,13 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
          background: radial-gradient(ellipse at 50% 45%, #241a40 0%, var(--panel) 70%); }
 .seat { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
 .seat.s { flex-direction: row; justify-content: center; gap: 10px; }
+.seat .own { display: flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; min-height: 21px; filter: brightness(.65); }   /* the High, Low and Jack cards held so far (in that order), then the Game card points taken, drawn as a card too */
+.seat .bk { display: flex; align-items: flex-end; justify-content: center; gap: 6px; width: 100%; }   /* North, West and East: the cards held stand in a column beside the hand (to its left, to its right for East), the first at the bottom */
+.seat .bk .own { flex-direction: column-reverse; justify-content: flex-start; gap: 2px; min-height: 0; }
+.pc.tiny { width: 15px; border-radius: 3px; display: inline-grid; box-shadow: none; background: var(--panel2); color: var(--ink); border: 1px solid var(--a); box-sizing: border-box; }   /* kept cards are dark with a lavender edge, so they are never mistaken for cards in play (white) */
+.pc.tiny.red { color: var(--b); }
+.pc.tiny b { font-size: 10px; top: 0; left: 1px; letter-spacing: -.5px; } .pc.tiny i { font-size: 12px; margin-top: 7px; }
+.gp { height: 21px; min-width: 15px; padding: 0 3px; box-sizing: border-box; border-radius: 3px; display: inline-grid; place-items: center; background: var(--panel2); color: var(--a); border: 1px solid var(--a); font-size: 12px; font-weight: 800; line-height: 1; }
 .seat .bid { white-space: nowrap; }   /* the status text beside a name is one line too */   /* your name, with your status text to its right */
 .seat.n { grid-area: n; } .seat.w { grid-area: w; } .seat.e { grid-area: e; } .seat.s { grid-area: s; }
 .seat .em { font-size: 26px; line-height: 1; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--panel2); border: 1px solid var(--line); }
