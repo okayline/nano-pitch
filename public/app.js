@@ -353,14 +353,15 @@ function gameScreen() {
   const face = v.turn === null ? "" : v.out && v.out[v.turn] && v.phase === "play" ? "💤" : ARROW[v.turn];   // the arrow points at whose move it is; a seat sitting out gets 💤; nobody's turn shows nothing
   const middle = tt.plays.length || !face ? "" : `<div class="mid"><span class="bot">${face}</span>${v.phase === "bid" ? "<br>bidding" : ""}</div>`;
 
-  const legal = new Set(v.legal || []), canPlay = !rp && v.phase === "play" && v.turn === HUMAN, bidTurn = !rp && v.phase === "bid" && v.turn === HUMAN;
+  const live = canAct(), lv = rp ? T.view : v;   // in the last pause the table is still a frame, but the server's view knows what you may play
+  const legal = new Set(lv.legal || []), canPlay = live && v.phase === "play" && v.turn === HUMAN, bidTurn = live && v.phase === "bid" && v.turn === HUMAN;
   const hand = v.hand.length ? v.hand.map((c) => (canPlay && legal.has(c) ? card(c, "ok", "c" + c) : card(c, canPlay ? "no" : bidTurn ? "dim" : ""))).join("")
     : '<div class="pc blank" aria-hidden="true"></div>'.repeat(6);   // no cards left: invisible ones hold the row open at the size of a hand
 
   let bidding = "";
-  if (!rp && v.phase === "bid" && v.turn === HUMAN) {
-    const lit = v.bidOptions.includes(hotBid) ? hotBid : 0;
-    bidding = `<div class="bids">${[0, 2, 3, 4].map((b) => `<button data-k="b${b}" class="${b === lit ? "hot" : ""}" ${v.bidOptions.includes(b) ? "" : "disabled"}>${b ? b : "Pass"}</button>`).join("")}</div>`;
+  if (bidTurn) {
+    const lit = lv.bidOptions.includes(hotBid) ? hotBid : 0;
+    bidding = `<div class="bids">${[0, 2, 3, 4].map((b) => `<button data-k="b${b}" class="${b === lit ? "hot" : ""}" ${lv.bidOptions.includes(b) ? "" : "disabled"}>${b ? b : "Pass"}</button>`).join("")}</div>`;
   }
 
 
@@ -585,11 +586,15 @@ const ACCOUNT_KEYS = {
 
 // ---------- input: taps and keys do the same things ----------
 
+// You can act once your turn is on and every move before it has been shown: the table may still be holding its last pause (a card
+// or a finished trick to look at), but that is no reason to make you wait.
+const canAct = () => !rp || (rp.k >= rp.evs.length && T.view.turn === HUMAN && !pending());
+
 function press(k) {
   if (mode === "account") { const f = ACCOUNT_KEYS[k]; if (f) f(); return; }
   if (mode !== "game" || !T) return;
   if (k === "a") return openAccount();
-  if (rp) return;   // moves are playing out
+  if (!canAct()) return;   // moves are playing out
   const v = T.view;
   if (k === "go") { if (pending()) { seen = v.history.length; msg = ""; playFromStart(); } return; }
   if (k === "play" && v.over) return play();
