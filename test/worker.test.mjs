@@ -376,6 +376,26 @@ test("the ledger shows a finished game's player name, the table's names and the 
   assert.ok(cookie);
 });
 
+test("a visitor is shown a signed name before their first move, and the first move makes it theirs; a forged or taken one is not", async () => {
+  const { call, raw } = setup();
+  const t = await call("/api/game");
+  assert.match(t.you.name, /^[A-Z][a-z]+ [A-Za-z]+$/);
+  assert.equal(t.you.sig, createHmac("sha256", secretOf(raw)).update("preview:" + t.you.name).digest("hex"));   // signed with the server's secret
+  assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM pitch_players").get().n, 0);   // looking still makes no player
+  const move = (who, ip) => call("/api/act", { body: { ...mv(t, first(t.view)), preview: who }, ip });
+  const r = await move(t.you, "1.1.1.1");
+  assert.equal(r.status, 200);
+  assert.equal(raw.prepare("SELECT name FROM pitch_players").get().name, t.you.name);   // the name they were shown is theirs
+  assert.equal((await call("/api/game", { cookie: r.cookie })).you, undefined);   // a player is not offered another
+  // the same name again (taken now) gives the next player another; a made-up one is ignored
+  const r2 = await move(t.you, "2.2.2.2");
+  assert.notEqual(raw.prepare("SELECT name FROM pitch_players WHERE id = 2").get()?.name ?? null, t.you.name);
+  const r3 = await move({ name: "Typed Myself", sig: "0".repeat(64) }, "3.3.3.3");
+  assert.equal(r3.status, 200);
+  assert.notEqual(raw.prepare("SELECT name FROM pitch_players WHERE id = 3").get()?.name ?? null, "Typed Myself");
+  assert.ok(r2.cookie && r3.cookie);
+});
+
 test("new players: 3 an hour from one address", async () => {
   const { call } = setup();
   const t = await call("/api/game");

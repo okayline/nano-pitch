@@ -20,6 +20,7 @@ let seen = 0;          // how many finished hands the player has been shown the 
 let msg = "";
 let acct = null, newCode = null, acctMsg = "";
 let hotBid = 0;        // the bid lit on the bid panel: Pass at first, then the last one the mouse was on, until you bid
+let preview = null;   // before their first move a visitor is shown a name the server rolled and signed ({ name, sig }); the first move sends it back so it becomes theirs
 let myName = "";      // the player's own name, shown on their seat (empty until the server has one: the seat says "You")
 let myPfp = "😎";      // the player's own profile pic (kept on the server; 😎 until they roll one)
 
@@ -456,6 +457,11 @@ async function load() {
   const r = await api("game");
   if (r.error) { msg = r.error; mode = "loading"; return draw(); }
   T = r;
+  if (r.you) {   // not a player yet: keep the name they were first shown (so a reload doesn't change it), and show it as theirs
+    try { const kept = JSON.parse(localStorage.getItem("np-preview")); if (kept && kept.name && kept.sig) preview = kept; } catch {}
+    if (!preview) { preview = r.you; try { localStorage.setItem("np-preview", JSON.stringify(preview)); } catch {} }
+    if (!myName) myName = preview.name;
+  }
   msg = "";
   mode = "game"; seen = T.view.history.length;   // a game reloaded in progress doesn't replay old results
   rp = null;
@@ -476,11 +482,12 @@ async function send(action) {
   if (busy || !T) return;
   hotBid = 0;
   busy = true; msg = ""; draw();
-  const r = await api("act", { game: T.game, daily: !!T.daily, n: T.n, action });
+  const r = await api("act", { game: T.game, daily: !!T.daily, n: T.n, action, ...(preview ? { preview } : {}) });
   busy = false;
   const old = T.view;
   if (r.view) T = r;   // a refused move still brings the game as it is
-  if (!myName && !r.error) fetchWho();   // their first move made them a player: now they have a name
+  if (preview && !r.error) { preview = null; try { localStorage.removeItem("np-preview"); } catch {} }   // they're a player now: the name they were shown is theirs
+  if (!myName && !r.error) fetchWho();
   if (r.error) msg = r.error;
   if (r.view && !r.error) playBack(old, r.view); else draw();
 }

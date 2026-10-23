@@ -1,5 +1,6 @@
 // Nano Pitch Worker.
-//   GET  /api/game                     your game (numbered, or the day's Daily game: { game, daily, day, ... }): the one in
+//   GET  /api/game                     (a visitor who isn't a player yet also gets `you`: a name the server rolled and signed, sent back with
+//                                      their first move so it becomes theirs) your game (numbered, or the day's Daily game: { game, daily, day, ... }): the one in
 //                                      progress, else your last finished one, else today's Daily game, else game 1 (first to 11
 //                                      points over as many hands as it takes), as far as the bots have played; once it's over,
 //                                      the field (how everyone who finished that game placed)
@@ -29,7 +30,7 @@ import { entryInsert, seal, sha256 } from "./ledger.js";
 import { giveName } from "./names.js";
 import { dailySeed, gameSeed, dailyNo, dayOfDaily, utcDay } from "../engine/daily.js";
 import { verifyTip } from "../public/chain.js";
-import { HUMAN, PFP_POOL, SUITS, castOf, startGame, actGame, replayGame, viewGame } from "../public/engine/pitch.js";
+import { HUMAN, PFP_POOL, SUITS, castOf, gamerTag, startGame, actGame, replayGame, viewGame } from "../public/engine/pitch.js";
 
 const GAME = "nano-pitch";
 const COOKIE = "np";
@@ -130,6 +131,20 @@ async function player(ctx, create = false) {
   ctx.setCookie = cookieFor(fresh);
   return row;
 }
+// A visitor who isn't a player yet is shown a name from the start, so the page never has to call them "You". The server rolls it and
+// signs it (HMAC with the server's secret, so nobody can type their own); their first move sends it back and it becomes their name,
+// unless someone has taken it since, then they get another. Looking still makes no player.
+async function hmacHex(env, text) {
+  const enc = new TextEncoder(), key = await crypto.subtle.importKey("raw", enc.encode(await secret(env)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return [...new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode("preview:" + text)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function previewName(env) {
+  const name = gamerTag(Math.random);
+  return { name, sig: await hmacHex(env, name) };
+}
+async function previewOk(env, p) {
+  return !!p && typeof p.name === "string" && typeof p.sig === "string" && p.name.length <= 40 && p.sig === (await hmacHex(env, p.name));
+}
 const must = async (ctx) => { const p = await player(ctx); if (!p) throw new Oops("No player here.", 401); return p; };
 
 // ---------- the game ----------
@@ -193,8 +208,8 @@ async function current(env, me) {
 }
 
 async function getGame(ctx) {
-  const cur = await current(ctx.env, await player(ctx));
-  return { ...(await answer(ctx.env, cur, cur.actions, cur.game)), ...(cur.reset ? { reset: true } : {}) };
+  const me = await player(ctx), cur = await current(ctx.env, me);
+  return { ...(await answer(ctx.env, cur, cur.actions, cur.game)), ...(cur.reset ? { reset: true } : {}), ...(me ? {} : { you: await previewName(ctx.env) }) };
 }
 
 // The next game, once the current one is finished: today's Daily game if the player hasn't started it, else the next number.
@@ -218,7 +233,9 @@ function cleanAction(a) {
 
 async function postAct(ctx) {
   const b = await body(ctx.req), { env } = ctx, action = cleanAction(b.action);
-  const me = await player(ctx, true), cur = await current(env, me), { kind, n, row, actions } = cur, K = KINDS[kind];
+  const had = !!(await player(ctx)), me = await player(ctx, true);
+  if (!had && (await previewOk(env, b.preview))) await giveName(env, me.id, null, { first: b.preview.name });   // the name they were shown becomes theirs
+  const cur = await current(env, me), { kind, n, row, actions } = cur, K = KINDS[kind];
   const stale = async (msg) => { throw new Oops(msg, 409, await answer(env, cur, actions, cur.game)); };
   if (b.game !== n || !!b.daily !== (kind === "daily")) await stale("You're on another game now.");
   if (row && row.done) await stale("That game is already sealed.");

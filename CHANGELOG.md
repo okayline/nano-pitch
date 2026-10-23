@@ -7,7 +7,8 @@ Newest first. Times are Hawaii time (HST).
 ## v0.10
 **Fri Oct 23, 2026**
 
-- Your name: a new player's seat said "You" for the whole first game, until a reload; it now takes your name after your first move. Removed: the wait for a reload (and the second copy of the name-fetching code).
+- Result screen: more room under the rounds grid so the scroll bar doesn't cover the bottom row, and a thinner scroll bar. Removed: the 4px gap that let it sit over the row.
+- Your name: a visitor who isn't a player yet is shown a random name from the start (the server rolls and signs it, nobody types one), and their first move makes it theirs, so the page never says "You" for a new player. Before, a new player's seat said "You" for the whole first game, until a reload. Removed: the "You" for new players, the wait for a reload, and the second copy of the name-fetching code.
 - Daily game: once a UTC day, after the game you're in, you play that day's Daily game: the same cards and the same bots for everyone (Daily game #1 is today; the number goes up one each UTC day). It's counted on its own: "game #14, Daily game #2, game #15". It never interrupts a game in progress. Added: Daily games, their own field and results tally each day, a 'daily' entry on the ledger, and its row on the ledger page. Removed: nothing from numbered games.
 - Fixed: when it came to your turn the arrow and "your bid" went blank for a moment and then came back. They now stay on you from the last bot's move. Removed: the blank moment.
 - Table: the cards of a finished trick no longer dim; only the winner's glow stays. Removed: the dimming of the trick's other cards.
