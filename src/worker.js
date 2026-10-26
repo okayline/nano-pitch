@@ -213,7 +213,8 @@ async function current(env, me) {
 async function getGame(ctx) {
   const me = await player(ctx), cur = await current(ctx.env, me);
   const named = me && (await ctx.env.DB.prepare("SELECT name FROM pitch_players WHERE id = ?").bind(me.id).first())?.name;
-  return { ...(await answer(ctx.env, cur, cur.actions, cur.game)), ...(cur.reset ? { reset: true } : {}), ...(named ? {} : { you: await previewName(ctx.env) }) };   // a guest (no name stored) is offered one to show
+  return { ...(await answer(ctx.env, cur, cur.actions, cur.game)), ...(cur.reset ? { reset: true } : {}), ...(named ? {} : { you: await previewName(ctx.env) }),   // a guest (no name stored) is offered one to show
+    carry: me ? carryView(await carried(ctx.env, me.id)) : null };   // (v0.13) the copy you carry: your account's pinned copy
 }
 
 // The next game, once the current one is finished: today's Daily game if the player hasn't started it, else the next number.
@@ -270,6 +271,7 @@ async function postAct(ctx) {
   });
   if (sealed.duplicate) await stale("That game is already sealed.");
   ctx.waitUntil(checkpoint(env, gameDetail(kind, n, next, place)));
+  if (kind === "daily" && place === 1) ctx.waitUntil(markCarry(env, me.id, "won_daily", "daily:" + n));   // (v0.13) winning the Daily marks the carried copy
   return { ...(await answer(env, { ...cur, rows: cur.rows || { daily: null, game: null } }, moves, next)), hash: sealed.hash };
 }
 
@@ -497,6 +499,7 @@ async function logout(ctx) {
 const ROUTES = {
   "GET /api/game": getGame, "POST /api/play": play, "POST /api/act": postAct, "GET /api/ledger": ledger, "GET /api/hands": hands,
   "GET /api/account": account, "POST /api/codes": codes, "POST /api/load": loadCode, "POST /api/passkey": passkey, "POST /api/logout": logout, "POST /api/name": reroll, "POST /api/pfp": setPfp,
+  "GET /api/copies": copies, "POST /api/pin": pinCopy,
 };
 
 export default {
@@ -519,3 +522,40 @@ export default {
     }
   },
 };
+
+// ---------- the carried copy (copied from TILT.EXE v0.19) ----------
+// Your account's pinned copy from any game (dungeon-items registry.js pinned: the pin, else your newest copy), read when
+// a run starts so the page can show it, and read again when a memorable moment marks it (markCarried: a deed mark made
+// in this game, keyed so a retry makes no second mark). A Moon-blessed copy (a 4Dungeon mark) shows in gold. A registry
+// that's away, or no copy, carries nothing and never stops a run.
+async function carried(env, playerId) {
+  try {
+    const c = env.REGISTRY && env.REGISTRY.pinned ? await env.REGISTRY.pinned(GAME, playerId) : null;
+    return c && c.itemId ? { ...c, blessed: c.marks.some((m) => m.kind === "moon" && m.value === "blessed") ? 1 : 0 } : null;
+  } catch (e) { console.error(e); return null; }
+}
+const carryView = (c) => c ? { name: c.item.name, copy: c.copy, blessed: c.blessed } : null;
+async function markCarry(env, playerId, value, key) {
+  const c = await carried(env, playerId);
+  if (!c) return;
+  try {
+    const r = await env.REGISTRY.markCarried({ itemId: c.itemId, copy: c.copy, by: { game: GAME, playerId }, kind: "deed", value, key });
+    if (r && r.error) console.error("The registry refused the mark: " + r.error);
+  } catch (e) { console.error(e); }
+}
+
+// The picker (account panel): every copy your account holds in any game, newest first, and pinning one of them to carry.
+//   GET  /api/copies              { copies: [{ itemId, copy, name, game, pinned }] } (up to 50)
+//   POST /api/pin {itemId, copy}  pin it: every game carries it from your next run
+async function copies(ctx) {
+  const { env } = ctx, player = await must(ctx);
+  if (!player || !env.REGISTRY || !env.REGISTRY.heldAcross) return { copies: [] };
+  const list = await env.REGISTRY.heldAcross(GAME, player.id, 50);
+  return { copies: list.map((c) => ({ itemId: c.itemId, copy: c.copy, name: c.item.name, game: c.game, pinned: c.pinned })) };
+}
+async function pinCopy(ctx) {
+  const { env } = ctx, player = await must(ctx), b = await body(ctx.req);
+  const r = await env.REGISTRY.pin({ game: GAME, playerId: player.id, itemId: Number(b.itemId), copy: Number(b.copy) });
+  if (r && r.error) throw new Oops(r.error);
+  return { ok: true };
+}

@@ -524,6 +524,7 @@ function accountScreen() {
       <div class="kv"><span>Save codes</span><span>${a.codes.length}/5 <button class="link" data-k="new">new code</button></span></div>
       <div class="kv"><span>Passkeys</span><span>${a.passkeys.length} ${pkOk() ? `<button class="link" data-k="pk">add passkey</button>` : `<span class="small">this browser can't do passkeys</span>`}</span></div>
     </div>
+    ${a.player ? carryPanel() : ""}
     <div class="panel">
       <div class="small" style="margin-bottom:8px">Log in on this device</div>
       <input id="codein" class="codein" maxlength="40" spellcheck="false" autocomplete="off" placeholder="Save code" aria-label="Save code">
@@ -601,7 +602,24 @@ async function pickPfp(e) {
   if (r.error) return openAccount(r.error);
   myPfp = r.pfp; await openAccount("");
 }
-async function openAccount(m = "") { acctMsg = m; acct = await api("account"); if (acct.pfp) myPfp = acct.pfp; if (acct.name) myName = acct.name; mode = "account"; draw(); }
+async function openAccount(m = "") { acctMsg = m; acct = await api("account"); if (acct.pfp) myPfp = acct.pfp; if (acct.name) myName = acct.name; copies = acct.player ? (await api("copies")).copies || [] : []; mode = "account"; draw(); }
+
+// (v0.13) CARRY: the copy you carry (your account's pinned copy from any 88x31 game, /api/game carry), gold if the Moon blessed
+// it, and every copy your account holds, newest first, each with a pin button. Winning the Daily marks the one you carry.
+let copies = [];
+function carryPanel() {
+  const c = T && T.carry;
+  const rows = copies.slice(0, 12).map((x, i) => `<div class="kv"><span>${esc(x.name)} #${x.copy} <span class="small">${esc(x.game)}</span></span><span>${x.pinned ? `<span class="small">pinned</span>` : `<button class="link" data-k="pin${i}">pin</button>`}</span></div>`).join("");
+  return `<div class="panel">
+      <div class="kv"><span>Carrying</span><span${c && c.blessed ? ' style="color:#e3b341"' : ""}>${c ? `${esc(c.name)} #${c.copy}` : "nothing yet"}</span></div>
+      <p class="small">Win the Daily and it gets a mark. Pin another below.</p>${rows}</div>`;
+}
+async function pinCarry(i) {
+  const x = copies[i]; if (!x) return;
+  const r = await api("pin", { itemId: x.itemId, copy: x.copy });
+  if (r.error) return openAccount(r.error);
+  await load(); await openAccount("Pinned. Every game carries it now.");
+}
 async function changed(m) { newCode = null; holdName(null); await load(); await openAccount(m); }
 
 const ACCOUNT_KEYS = {
@@ -651,6 +669,7 @@ const ACCOUNT_KEYS = {
 const canAct = () => !rp || (rp.k >= rp.evs.length && T.view.turn === HUMAN && !pending());
 
 function press(k) {
+  if (mode === "account" && /^pin\d+$/.test(k)) return pinCarry(Number(k.slice(3)));
   if (mode === "account") { const f = ACCOUNT_KEYS[k]; if (f) f(); return; }
   if (mode !== "game" || !T) return;
   if (k === "a") return openAccount();

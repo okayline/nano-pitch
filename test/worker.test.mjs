@@ -510,3 +510,23 @@ test("your hands: a finished game opens hand by hand for the player who finished
   const next = await call("/api/play", { body: {}, cookie });
   assert.equal((await call(`/api/hands?daily=${next.daily ? 1 : 0}&n=${next.game}`, { cookie })).status, 404);
 });
+
+test("the carried copy: /api/game shows it; finishing a Daily marks it only on first place; the picker lists and pins", async () => {
+  const { env, call, raw } = setup(), marked = [], pins = [];
+  Object.assign(env.REGISTRY, {
+    async pinned() { return { itemId: 4, copy: 2, item: { name: "a lamp" }, marks: [] }; },
+    async markCarried(m) { marked.push(m); return { ok: true, n: 1, created: true }; },
+    async heldAcross() { return [{ itemId: 4, copy: 2, game: "4dungeon", pinned: false, item: { name: "a lamp" } }]; },
+    async pin(p) { pins.push(p); return { ok: true }; },
+  });
+  const { t: end, cookie } = await playThrough(call, null);
+  assert.deepEqual((await call("/api/game", { cookie })).carry, { name: "a lamp", copy: 2, blessed: 0 });
+  const id = raw.prepare("SELECT id FROM pitch_players").get().id;
+  const place = JSON.parse(raw.prepare("SELECT record FROM pitch_ledger WHERE kind = 'daily'").get().record).place;
+  assert.ok(end.daily);
+  assert.deepEqual(marked, place === 1
+    ? [{ itemId: 4, copy: 2, by: { game: "nano-pitch", playerId: id }, kind: "deed", value: "won_daily", key: "daily:" + end.game }] : []);
+  assert.deepEqual((await call("/api/copies", { cookie })).copies, [{ itemId: 4, copy: 2, name: "a lamp", game: "4dungeon", pinned: false }]);
+  assert.equal((await call("/api/pin", { cookie, body: { itemId: 4, copy: 2 } })).status, 200);
+  assert.deepEqual(pins, [{ game: "nano-pitch", playerId: id, itemId: 4, copy: 2 }]);
+});

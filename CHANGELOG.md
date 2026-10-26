@@ -4,6 +4,13 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.13.0
+**Mon Oct 26, 2026**
+
+- Account shows the copy you carry: your account's pinned copy from any 88x31 game, or your newest copy, in gold if the Moon blessed it. It lists every copy your account holds, each with a pin button. Removed: no way to see or choose the copy you carry.
+- Winning the Daily (first place) marks the carried copy "won_daily" in the shared registry. Removed: Daily wins leaving no trace on the copies players hold.
+- Needs dungeon-items with the pinned copy (its migration 007) live first.
+
 ## v0.12.5
 **Fri Oct 23, 2026**
 
