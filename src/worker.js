@@ -499,7 +499,7 @@ async function logout(ctx) {
 const ROUTES = {
   "GET /api/game": getGame, "POST /api/play": play, "POST /api/act": postAct, "GET /api/ledger": ledger, "GET /api/hands": hands,
   "GET /api/account": account, "POST /api/codes": codes, "POST /api/load": loadCode, "POST /api/passkey": passkey, "POST /api/logout": logout, "POST /api/name": reroll, "POST /api/pfp": setPfp,
-  "GET /api/copies": copies, "POST /api/pin": pinCopy,
+  "GET /api/carry": carryPage, "POST /api/pin": pinCopy,
 };
 
 export default {
@@ -508,7 +508,7 @@ export default {
     if (!route) return json({ error: "Not found." }, 404);
     const ctx = { req, env, waitUntil: (p) => ectx?.waitUntil?.(p), setCookie: null };
     try {
-      const res = json(await route(ctx));
+      const out = await route(ctx), res = out instanceof Response ? out : json(out);   // a page (the carry window) goes as it is
       if (ctx.setCookie) res.headers.append("set-cookie", ctx.setCookie);
       return res;
     } catch (e) {
@@ -547,11 +547,16 @@ async function markCarry(env, playerId, value, key) {
 // The picker (account panel): every copy your account holds in any game, newest first, and pinning one of them to carry.
 //   GET  /api/copies              { copies: [{ itemId, copy, name, game, pinned }] } (up to 50)
 //   POST /api/pin {itemId, copy}  pin it: every game carries it from your next run
-async function copies(ctx) {
-  const { env } = ctx, player = await must(ctx);
-  if (!player || !env.REGISTRY || !env.REGISTRY.heldAcross) return { copies: [] };
-  const list = await env.REGISTRY.heldAcross(GAME, player.id, 50);
-  return { copies: list.map((c) => ({ itemId: c.itemId, copy: c.copy, name: c.item.name, game: c.game, pinned: c.pinned })) };
+// (v0.14) The carry window in the account screen: dungeon-items' page of every copy your account holds in any game, your
+// save codes and passkeys, in Nano Pitch's look (an iframe at /api/carry?embed=1). Its buttons use the routes above.
+async function carryPage(ctx) {
+  const { env, req } = ctx, me = await player(ctx);
+  if (!env.REGISTRY || !env.REGISTRY.carryWindow) throw new Oops("The registry is unavailable right now. Try again in a moment.", 503);
+  const id = me ? await accountFor(env, me) : null;
+  const ways = { player: !!me, ...(id ? ok(await ACC(env).info(id)) : { codes: [], passkeys: [] }) };
+  const html = await env.REGISTRY.carryWindow({ game: GAME, playerId: me ? me.id : 0, pinUrl: "/api/pin", back: "/", ways, preview: "np-preview",
+    embed: new URL(req.url).searchParams.get("embed") === "1", frame: { title: "NANO PITCH · CARRY", paper: "#0b0a12", ink: "#f4f1ff", edge: "#3a2f5c", accent: "#ff6fcf" } });
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 async function pinCopy(ctx) {
   const { env } = ctx, player = await must(ctx), b = await body(ctx.req);

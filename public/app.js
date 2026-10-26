@@ -18,7 +18,7 @@ let mode = "loading";  // loading | game | account
 let busy = false;
 let seen = 0;          // how many finished hands the player has been shown the result of
 let msg = "";
-let acct = null, newCode = null, acctMsg = "";
+let acct = null, acctMsg = "";
 let hotBid = 0;        // the bid lit on the bid panel: Pass at first, then the last one the mouse was on, until you bid
 let hotCard = "";      // the card the mouse is on ("c" + card), so a redraw gives it back already lifted instead of dropping it for a moment
 let preview = null;   // a guest's name: the server rolls and signs one ({ name, sig }), the page keeps it, and it is sent back only with a save code or passkey
@@ -306,11 +306,8 @@ function chat() {
 // ---------- drawing ----------
 
 function draw() {
-  const typed = document.getElementById("codein")?.value;   // typing survives a redraw
   $app.classList.toggle("busy", busy);
   $app.innerHTML = { loading: loadingScreen, game: gameScreen, account: accountScreen }[mode]() + `<div class="ver">${esc(VERSION)}</div>`;
-  const box = document.getElementById("codein");
-  if (box && typed != null) box.value = typed;
   fitGrid();
   chat();
 }
@@ -517,19 +514,9 @@ function accountScreen() {
         <div class="big" style="font-size:22px;text-align:left">${a.player ? `${esc(a.name || myName || "player " + a.id)}'s account` : "ACCOUNT"}</div>
       </div>
       ${a.player ? `<p class="small" style="margin:6px 0 0">Tap your pic for a new one.</p>` : ""}
-      ${a.player ? `<div class="row" style="margin-bottom:12px"><button class="ghost" style="flex:1" data-k="name">Reroll name</button><button class="ghost" style="flex:1" data-k="out">Log out</button></div>` : ""}
-      ${newCode ? `<div class="kv"><span>New save code</span><span class="code">${esc(newCode)}</span></div>
-        <div class="row" style="margin-bottom:8px"><button class="ghost" style="flex:1" data-k="copy">Copy</button><button class="ghost" style="flex:1" data-k="dl">Download</button></div>
-        <p class="small">Shown once. Keep it somewhere safe.</p>` : ""}
-      <div class="kv"><span>Save codes</span><span>${a.codes.length}/5 <button class="link" data-k="new">new code</button></span></div>
-      <div class="kv"><span>Passkeys</span><span>${a.passkeys.length} ${pkOk() ? `<button class="link" data-k="pk">add passkey</button>` : `<span class="small">this browser can't do passkeys</span>`}</span></div>
+      ${a.player ? `<div class="row" style="margin-top:12px"><button class="ghost" style="flex:1" data-k="name">Reroll name</button></div>` : ""}
     </div>
-    ${a.player ? carryPanel() : ""}
-    <div class="panel">
-      <div class="small" style="margin-bottom:8px">Log in on this device</div>
-      <input id="codein" class="codein" maxlength="40" spellcheck="false" autocomplete="off" placeholder="Save code" aria-label="Save code">
-      <div class="row" style="margin-top:8px"><button class="go" style="flex:1" data-k="use">Use code</button>${pkOk() ? `<button class="ghost" style="flex:1;height:54px" data-k="pkin">Passkey</button>` : ""}</div>
-    </div>
+    ${carryPanel()}
     <p class="msg">${esc(acctMsg)}</p>`;
 }
 
@@ -589,77 +576,31 @@ async function send(action) {
   if (r.view && !r.error) playBack(old, r.view); else draw();
 }
 
-// ---------- passkeys (WebAuthn in the browser, copied from moba-beat public/account.js) ----------
-
-const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-const unb64 = (t) => { t = t.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(t + "===".slice((t.length + 3) % 4)), (c) => c.charCodeAt(0)); };
-const pkOk = () => !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create);
-const device = () => { const u = navigator.userAgent; return /Android/.test(u) ? "Android" : /iPhone|iPad/.test(u) ? "iPhone" : /Mac/.test(u) ? "Mac" : /Windows/.test(u) ? "Windows PC" : "This device"; };
-const pkOops = (e) => (e && e.name === "NotAllowedError" ? "Passkey cancelled (or it timed out)." : (e && e.message) || "The passkey didn't work.");
-
 async function pickPfp(e) {
   const r = await api("pfp", { pfp: e });
   if (r.error) return openAccount(r.error);
   myPfp = r.pfp; await openAccount("");
 }
-async function openAccount(m = "") { acctMsg = m; acct = await api("account"); if (acct.pfp) myPfp = acct.pfp; if (acct.name) myName = acct.name; copies = acct.player ? (await api("copies")).copies || [] : []; mode = "account"; draw(); }
+async function openAccount(m = "") { acctMsg = m; acct = await api("account"); if (acct.pfp) myPfp = acct.pfp; if (acct.name) myName = acct.name; mode = "account"; draw(); }
 
 // (v0.13) CARRY: the copy you carry (your account's pinned copy from any 88x31 game, /api/game carry), gold if the Moon blessed
-// it, and every copy your account holds, newest first, each with a pin button. Winning the Daily marks the one you carry.
-let copies = [];
+// it. Winning the Daily marks the one you carry. (v0.14) Choosing another one, save codes, passkeys and logging in or out are
+// in the registry's carry window, which sits right here (/api/carry?embed=1), the same window every 88x31 game shows.
 function carryPanel() {
   const c = T && T.carry;
-  const rows = copies.slice(0, 12).map((x, i) => `<div class="kv"><span>${esc(x.name)} #${x.copy} <span class="small">${esc(x.game)}</span></span><span>${x.pinned ? `<span class="small">pinned</span>` : `<button class="link" data-k="pin${i}">pin</button>`}</span></div>`).join("");
-  return `<div class="panel">
-      <div class="kv"><span>Carrying</span><span${c && c.blessed ? ' style="color:#e3b341"' : ""}>${c ? `${esc(c.name)} #${c.copy}` : "nothing yet"}</span></div>
-      <p class="small">Win the Daily and it gets a mark. Pin another below.</p>${rows}</div>`;
+  return `<div class="panel"><div class="kv"><span>Carrying</span><span${c && c.blessed ? ' style="color:#e3b341"' : ""}>${c ? `${esc(c.name)} #${c.copy}` : "nothing yet"}</span></div>
+      <p class="small">Win the Daily and it gets a mark.</p></div>
+    <iframe class="carry" src="/api/carry?embed=1" title="Save codes, passkeys and carry" scrolling="no" onload="this.style.height=this.contentDocument.body.getBoundingClientRect().height+'px'"></iframe>`;
 }
-async function pinCarry(i) {
-  const x = copies[i]; if (!x) return;
-  const r = await api("pin", { itemId: x.itemId, copy: x.copy });
-  if (r.error) return openAccount(r.error);
-  await load(); await openAccount("Pinned. Every game carries it now.");
-}
-async function changed(m) { newCode = null; holdName(null); await load(); await openAccount(m); }
 
 const ACCOUNT_KEYS = {
-  async new() { const r = await api("codes", { action: "new", ...(preview ? { preview } : {}) }); if (r.error) return openAccount(r.error); newCode = r.code; holdName(null); await load(); await openAccount(); },
-  async copy() { try { await navigator.clipboard.writeText(newCode); acctMsg = "Copied. Keep it somewhere safe."; } catch { acctMsg = "Couldn't copy. Write it down instead."; } draw(); },
-  async dl() {
-    const text = `Daily Pitch save code\r\n\r\n  ${newCode}\r\n\r\nOn any browser: open ${location.origin}, open Account, and use this code under "Log in on this device".\r\nIt works in the other 88x31 games too. Keep it private: anyone with it can log in as you.\r\n`;
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" })); a.download = "daily-pitch-save-code.txt";
-    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  },
-  async use() { const code = (document.getElementById("codein")?.value || "").trim(); const r = await api("load", { code }); if (r.error) return openAccount(r.error); await changed("Logged in."); },
   async pfp() { const others = PFP_POOL.filter((e) => e !== myPfp); await pickPfp(others[Math.floor(Math.random() * others.length)]); },   // a random new pic each tap
   async name() {
     const r = await api("name", {}); if (r.error) return openAccount(r.error);
     if (r.sig) { holdName({ name: r.name, sig: r.sig }); myName = r.name; }   // a guest: the new name stays in this browser
     await openAccount(`You're ${r.name} now.`);
   },
-  async out() { const r = await api("logout", {}); if (r.error) return openAccount(r.error); await changed("Logged out."); },
-  async pk() {
-    acctMsg = "Waiting for your fingerprint, face or PIN…"; draw();
-    try {
-      const o = await api("passkey", { action: "register_options", ...(preview ? { preview } : {}) }); if (o.error) return openAccount(o.error);
-      const cred = await navigator.credentials.create({ publicKey: { ...o, challenge: unb64(o.challenge), user: { ...o.user, id: unb64(o.user.id) }, excludeCredentials: (o.excludeCredentials || []).map((c) => ({ ...c, id: unb64(c.id) })) } });
-      const r = await api("passkey", { action: "register", ...(preview ? { preview } : {}), label: device(), credential: { id: cred.id, response: { clientDataJSON: b64(cred.response.clientDataJSON), attestationObject: b64(cred.response.attestationObject) } } });
-      if (r.error) return openAccount(r.error);
-      await changed("Passkey added.");
-    } catch (e) { acctMsg = pkOops(e); draw(); }
-  },
-  async pkin() {
-    acctMsg = "Waiting for your passkey…"; draw();
-    try {
-      const o = await api("passkey", { action: "login_options" }); if (o.error) return openAccount(o.error);
-      const cred = await navigator.credentials.get({ publicKey: { ...o, challenge: unb64(o.challenge) } });
-      const r = await api("passkey", { action: "login", credential: { id: cred.id, response: { clientDataJSON: b64(cred.response.clientDataJSON), authenticatorData: b64(cred.response.authenticatorData), signature: b64(cred.response.signature) } } });
-      if (r.error) return openAccount(r.error);
-      await changed("Logged in.");
-    } catch (e) { acctMsg = pkOops(e); draw(); }
-  },
-  async esc() { mode = "game"; newCode = null; draw(); },
+  async esc() { mode = "game"; draw(); },
 };
 
 // ---------- input: taps and keys do the same things ----------
@@ -669,7 +610,6 @@ const ACCOUNT_KEYS = {
 const canAct = () => !rp || (rp.k >= rp.evs.length && T.view.turn === HUMAN && !pending());
 
 function press(k) {
-  if (mode === "account" && /^pin\d+$/.test(k)) return pinCarry(Number(k.slice(3)));
   if (mode === "account") { const f = ACCOUNT_KEYS[k]; if (f) f(); return; }
   if (mode !== "game" || !T) return;
   if (k === "a") return openAccount();
@@ -713,7 +653,6 @@ $app.addEventListener("click", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.target && e.target.id === "codein") { if (e.key === "Enter") press("use"); else if (e.key === "Escape") press("esc"); return; }
   if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
   const key = e.key.toLowerCase();
   if (mode === "account") {

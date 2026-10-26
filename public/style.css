@@ -189,3 +189,4 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .rleft .tot { font-family: var(--meme); font-size: 20px; padding-right: 8px; }   /* the totals sit a few pixels further left */
 .rleft .tot.win { text-shadow: 0 0 10px var(--b); }
 .rleft .you { color: var(--ink); }
+.carry { width: 100%; height: 600px; border: 0; background: transparent; overflow: hidden; }   /* the registry's carry window in the account screen (v0.14) */

@@ -511,12 +511,12 @@ test("your hands: a finished game opens hand by hand for the player who finished
   assert.equal((await call(`/api/hands?daily=${next.daily ? 1 : 0}&n=${next.game}`, { cookie })).status, 404);
 });
 
-test("the carried copy: /api/game shows it; finishing a Daily marks it only on first place; the picker lists and pins", async () => {
-  const { env, call, raw } = setup(), marked = [], pins = [];
+test("the carried copy: /api/game shows it; finishing a Daily marks it only on first place; the carry window and pinning", async () => {
+  const { env, call, raw } = setup(), marked = [], pins = [], asked = [];
   Object.assign(env.REGISTRY, {
     async pinned() { return { itemId: 4, copy: 2, item: { name: "a lamp" }, marks: [] }; },
     async markCarried(m) { marked.push(m); return { ok: true, n: 1, created: true }; },
-    async heldAcross() { return [{ itemId: 4, copy: 2, game: "4dungeon", pinned: false, item: { name: "a lamp" } }]; },
+    async carryWindow(a) { asked.push(a); return "<p>window</p>"; },
     async pin(p) { pins.push(p); return { ok: true }; },
   });
   const { t: end, cookie } = await playThrough(call, null);
@@ -526,7 +526,9 @@ test("the carried copy: /api/game shows it; finishing a Daily marks it only on f
   assert.ok(end.daily);
   assert.deepEqual(marked, place === 1
     ? [{ itemId: 4, copy: 2, by: { game: "nano-pitch", playerId: id }, kind: "deed", value: "won_daily", key: "daily:" + end.game }] : []);
-  assert.deepEqual((await call("/api/copies", { cookie })).copies, [{ itemId: 4, copy: 2, name: "a lamp", game: "4dungeon", pinned: false }]);
+  const page = await worker.fetch(new Request("https://pitch.88x31.app/api/carry?embed=1", { headers: { cookie } }), env);
+  assert.equal(await page.text(), "<p>window</p>");
+  assert.deepEqual([asked[0].game, asked[0].playerId, asked[0].embed, asked[0].preview], ["nano-pitch", id, true, "np-preview"]);
   assert.equal((await call("/api/pin", { cookie, body: { itemId: 4, copy: 2 } })).status, 200);
   assert.deepEqual(pins, [{ game: "nano-pitch", playerId: id, itemId: 4, copy: 2 }]);
 });
