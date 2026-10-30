@@ -4,6 +4,11 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.15.1
+**Thu Oct 29, 2026 · 2:50 PM HST**
+
+- The footer ("© ~*~88x31~*~ cLuB, year · ≡ version") sits on the right under the game instead of in the middle. Removed: the centered footer.
+
 ## v0.15.0
 **Thu Oct 29, 2026**
 
