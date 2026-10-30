@@ -5,17 +5,17 @@ Newest first. Times are Hawaii time (HST).
 ---
 
 ## v0.15.3
-**Thu Oct 29, 2026 · 3:10 PM HST**
+**Thu Oct 29, 2026 · 2:53 PM HST**
 
 - The footer is a bit smaller, a few pixels higher and a few pixels in from the panel's edge. Removed: the larger footer text.
 
 ## v0.15.2
-**Thu Oct 29, 2026 · 3:00 PM HST**
+**Thu Oct 29, 2026 · 2:49 PM HST**
 
 - The footer sits right under the game panel. Removed: the 40px of empty space under the panel.
 
 ## v0.15.1
-**Thu Oct 29, 2026 · 2:50 PM HST**
+**Thu Oct 29, 2026 · 2:44 PM HST**
 
 - The footer ("© ~*~88x31~*~ cLuB, year · ≡ version") sits on the right under the game instead of in the middle. Removed: the centered footer.
 
