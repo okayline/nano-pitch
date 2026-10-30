@@ -4,6 +4,11 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.15.4
+**Thu Oct 29, 2026 · 3:00 PM HST**
+
+- NANO PITCH can be played in the 88x31 BBS: the BBS gets a guest player for each BBS user (`POST /api/bbs-enter`, only with the shared BBS key), and with that key the limits (new players, games, names) count for each BBS user instead of for the BBS's one internet address. Removed: nothing; web players count against their address as before.
+
 ## v0.15.3
 **Thu Oct 29, 2026 · 2:53 PM HST**
 

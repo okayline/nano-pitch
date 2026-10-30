@@ -532,3 +532,31 @@ test("the carried copy: /api/game shows it; finishing a Daily marks it only on f
   assert.equal((await call("/api/pin", { cookie, body: { itemId: 4, copy: 2 } })).status, 200);
   assert.deepEqual(pins, [{ game: "nano-pitch", playerId: id, itemId: 4, copy: 2 }]);
 });
+
+test("the BBS: a guest player per call with the accounts key (404 without), and its limits count per BBS user", async () => {
+  const { env, call } = setup();
+  env.ACCOUNTS_KEY = "k".repeat(24);
+  const bbs = async (path, { body, user, key = env.ACCOUNTS_KEY, cookie } = {}) => {
+    const r = await worker.fetch(new Request("https://pitch.88x31.app" + path, { method: body ? "POST" : "GET",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "9.9.9.9", "x-accounts-key": key, ...(user ? { "x-bbs-user": user } : {}), ...(cookie ? { cookie } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}) }), env, { waitUntil: () => {} });
+    return { status: r.status, ...(await r.json()) };
+  };
+  assert.equal((await bbs("/api/bbs-enter", { body: {}, key: "wrong".repeat(5) })).status, 404);
+  const a = await bbs("/api/bbs-enter", { body: {}, user: "4" }), b = await bbs("/api/bbs-enter", { body: {}, user: "5" });
+  assert.match(a.token, /^[A-Za-z0-9_-]{20,}$/);
+  assert.notEqual(a.token, b.token);
+  // the guest plays a move with its token: no new player is made (the cookie finds it)
+  const t = await bbs("/api/game", { cookie: "np=" + a.token, user: "4" });
+  const r = await bbs("/api/act", { body: mv(t, first(t.view)), cookie: "np=" + a.token, user: "4" });
+  assert.equal(r.status, 200, r.error);
+  // the new-guest limit (3 an hour) counts per BBS user: 4 users from one address can each make a player on their first move
+  for (const user of ["11", "12", "13", "14"]) {
+    const g = await bbs("/api/game", { user });
+    assert.equal((await bbs("/api/act", { body: mv(g, first(g.view)), user })).status, 200);
+  }
+  // without the key they all count against the address: the 4th is refused
+  const plain = [];
+  for (let i = 0; i < 4; i++) { const g = await call("/api/game", { ip: "8.8.8.8" }); plain.push((await call("/api/act", { body: mv(g, first(g.view)), ip: "8.8.8.8" })).status); }
+  assert.deepEqual(plain, [200, 200, 200, 429]);
+});

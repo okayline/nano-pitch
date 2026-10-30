@@ -368,9 +368,19 @@ const ACC = (env) => { if (!env.ACCOUNTS) throw new Oops("Accounts are unavailab
 const ipOf = (req) => req.headers.get("cf-connecting-ip") || "unknown";
 const ok = (r) => { if (r && r.error) throw new Oops(r.error, r.status || 400); return r; };
 
-// Fixed window per hashed IP and action. Returns true if allowed.
+// The 88x31 BBS plays every one of its users from its one address. It holds the shared accounts key (ACCOUNTS_KEY, the same
+// secret as dungeon-items) and sends it with the BBS user's number (x-bbs-user); with the right key a limit counts against that
+// BBS user instead of the address. A wrong or missing key just counts against the address.
+const sameKey = (a, b) => a.length === b.length && [...a].reduce((x, c, i) => x | (c.charCodeAt(0) ^ b.charCodeAt(i)), 0) === 0;
+const fromBbs = (req, env) => !!env.ACCOUNTS_KEY && env.ACCOUNTS_KEY.length >= 16 && sameKey(req.headers.get("x-accounts-key") || "", env.ACCOUNTS_KEY);
+function who(req, env) {
+  const user = req.headers.get("x-bbs-user") || "";
+  return fromBbs(req, env) && /^[1-9][0-9]{0,6}$/.test(user) ? "bbs:" + user : "ip:" + ipOf(req);
+}
+
+// Fixed window per hashed address (or BBS user, see who) and action. Returns true if allowed.
 async function rateLimit(env, req, action, limit, windowSecs) {
-  const key = action + ":" + (await sha256("ip:" + ipOf(req))).slice(0, 32);
+  const key = action + ":" + (await sha256(who(req, env))).slice(0, 32);
   const t = now(), windowStart = t - (t % windowSecs);
   const row = await env.DB.prepare(
     `INSERT INTO pitch_rate_limits (key, window_start, count) VALUES (?, ?, 1)
@@ -496,10 +506,19 @@ async function logout(ctx) {
 
 // ---------- routing ----------
 
+// The 88x31 BBS signs a user in here: with the accounts key, a new guest player (no account, no name, like a visitor's first move
+// makes) and its login token, which the BBS keeps for that BBS user. Without the key: 404, as if the route didn't exist.
+async function bbsEnter(ctx) {
+  if (!fromBbs(ctx.req, ctx.env)) throw new Oops("Not found.", 404);
+  const token = newToken();
+  await ctx.env.DB.prepare("INSERT INTO pitch_players (token_hash, created_at) VALUES (?, ?)").bind(await sha256(token), now()).run();
+  return { token };
+}
+
 const ROUTES = {
   "GET /api/game": getGame, "POST /api/play": play, "POST /api/act": postAct, "GET /api/ledger": ledger, "GET /api/hands": hands,
   "GET /api/account": account, "POST /api/codes": codes, "POST /api/load": loadCode, "POST /api/passkey": passkey, "POST /api/logout": logout, "POST /api/name": reroll, "POST /api/pfp": setPfp,
-  "GET /api/carry": carryPage, "POST /api/pin": pinCopy,
+  "GET /api/carry": carryPage, "POST /api/pin": pinCopy, "POST /api/bbs-enter": bbsEnter,
 };
 
 export default {
