@@ -14,7 +14,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 .app { max-width: 480px; margin: 0 auto; padding: 16px 16px 0; display: flex; flex-direction: column; gap: 14px; }
-body .ddfoot { max-width: 480px; margin: 4px auto 0; box-sizing: border-box; padding: 0 16px 40px; }   /* the shared footer (dungeon-items footer.js) lines up with the right edge of the game column */
+body .ddfoot { max-width: 480px; margin: 1px auto 0; box-sizing: border-box; padding: 0 28px 40px; }   /* the shared footer (dungeon-items footer.js) lines up with the right edge of the game column */
 .app.busy { pointer-events: none; }
 button { font: inherit; color: var(--ink); cursor: pointer; }
 button:disabled { cursor: default; }

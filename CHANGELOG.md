@@ -4,6 +4,11 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.15.3
+**Thu Oct 29, 2026 · 3:10 PM HST**
+
+- The footer is a bit smaller, a few pixels higher and a few pixels in from the panel's edge. Removed: the larger footer text.
+
 ## v0.15.2
 **Thu Oct 29, 2026 · 3:00 PM HST**
 
