@@ -2,7 +2,6 @@
 // (aura-farm's lists) that the game's seed picks (left, top, right); a game is first to 11 points over as many hands as it takes,
 // and games are numbered: everyone plays 1, 2, 3... in order. The look follows aura-farm:
 // dark, purple glow, rounded panels. Everything is drawn into #app from the last answer of /api/game, /api/play or /api/act.
-import { VERSION } from "./version.js";
 import { suitOf, rankOf, gamePoints, HUMAN, PFP_POOL, gamerTag } from "./engine/pitch.js";
 
 const SUIT = ["♣", "♦", "♥", "♠"];
@@ -14,11 +13,10 @@ const ICON = { table: "🤖", high: "👑", low: "🪶", jack: "🃏", game: "�
 const $app = document.getElementById("app");
 
 let T = null;          // the last answer: { game, daily, day, n, view, field, next }
-let mode = "loading";  // loading | game | account
+let mode = "loading";  // loading | game
 let busy = false;
 let seen = 0;          // how many finished hands the player has been shown the result of
 let msg = "";
-let acct = null, acctMsg = "";
 let hotBid = 0;        // the bid lit on the bid panel: Pass at first, then the last one the mouse was on, until you bid
 let hotCard = "";      // the card the mouse is on ("c" + card), so a redraw gives it back already lifted instead of dropping it for a moment
 let preview = null;   // a guest's name: the server rolls and signs one ({ name, sig }), the page keeps it, and it is sent back only with a save code or passkey
@@ -307,7 +305,7 @@ function chat() {
 
 function draw() {
   $app.classList.toggle("busy", busy);
-  $app.innerHTML = { loading: loadingScreen, game: gameScreen, account: accountScreen }[mode]() + `<div class="ver">${esc(VERSION)}</div>`;
+  $app.innerHTML = { loading: loadingScreen, game: gameScreen }[mode]();
   fitGrid();
   chat();
 }
@@ -326,8 +324,7 @@ addEventListener("resize", () => fitGrid());
 
 function header() {
   const sub = T ? `${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · ${gameLabel()} · ${T.view.over ? "Final" : "Round " + ((!rp && pending() ? T.view.history[seen].no : T.view.no) + 1)}` : "";   // today's date on this device
-  const right = mode === "account" ? `<span class="row" style="gap:14px"><button class="link" data-k="esc">Back</button><a class="link" href="ledger.html">Ledger</a></span>`
-    : `<span class="row" style="gap:14px"><a class="link" href="ledger.html">Ledger</a><button class="link" data-k="a">Account</button></span>`;
+  const right = `<span class="row" style="gap:14px"><a class="link" href="ledger.html">Ledger</a></span>`;
   return `<header><div class="title">NANO PITCH<small>${esc(sub)}</small></div>${right}</header>`;
 }
 
@@ -503,23 +500,6 @@ function finalScreen() {
     ${buttons}`;
 }
 
-// ---------- the account (save codes and passkeys, from the shared 88x31 accounts) ----------
-
-function accountScreen() {
-  const a = acct || { player: false, codes: [], passkeys: [], devices: 0 };
-  return header() + `
-    <div class="panel">
-      <div class="row" style="flex-wrap:nowrap;gap:12px">
-        ${a.player ? `<button class="avatar" data-k="pfp" aria-label="Change your profile pic">${myPfp}</button>` : ""}
-        <div class="big" style="font-size:22px;text-align:left">${a.player ? `${esc(a.name || myName || "player " + a.id)}'s account` : "ACCOUNT"}</div>
-      </div>
-      ${a.player ? `<p class="small" style="margin:6px 0 0">Tap your pic for a new one.</p>` : ""}
-      ${a.player ? `<div class="row" style="margin-top:12px"><button class="ghost" style="flex:1" data-k="name">Reroll name</button></div>` : ""}
-    </div>
-    ${carryPanel()}
-    <p class="msg">${esc(acctMsg)}</p>`;
-}
-
 // ---------- talking to the server ----------
 
 async function api(path, data) {
@@ -576,33 +556,6 @@ async function send(action) {
   if (r.view && !r.error) playBack(old, r.view); else draw();
 }
 
-async function pickPfp(e) {
-  const r = await api("pfp", { pfp: e });
-  if (r.error) return openAccount(r.error);
-  myPfp = r.pfp; await openAccount("");
-}
-async function openAccount(m = "") { acctMsg = m; acct = await api("account"); if (acct.pfp) myPfp = acct.pfp; if (acct.name) myName = acct.name; mode = "account"; draw(); }
-
-// (v0.13) CARRY: the copy you carry (your account's pinned copy from any 88x31 game, /api/game carry), gold if the Moon blessed
-// it. Winning the Daily marks the one you carry. (v0.14) Choosing another one, save codes, passkeys and logging in or out are
-// in the registry's carry window, which sits right here (/api/carry?embed=1), the same window every 88x31 game shows.
-function carryPanel() {
-  const c = T && T.carry;
-  return `<div class="panel"><div class="kv"><span>Carrying</span><span${c && c.blessed ? ' style="color:#e3b341"' : ""}>${c ? `${esc(c.name)} #${c.copy}` : "nothing yet"}</span></div>
-      <p class="small">Win the Daily and it gets a mark.</p></div>
-    <iframe class="carry" src="/api/carry?embed=1" title="Save codes, passkeys and carry" scrolling="no" onload="this.style.height=this.contentDocument.body.getBoundingClientRect().height+'px'"></iframe>`;
-}
-
-const ACCOUNT_KEYS = {
-  async pfp() { const others = PFP_POOL.filter((e) => e !== myPfp); await pickPfp(others[Math.floor(Math.random() * others.length)]); },   // a random new pic each tap
-  async name() {
-    const r = await api("name", {}); if (r.error) return openAccount(r.error);
-    if (r.sig) { holdName({ name: r.name, sig: r.sig }); myName = r.name; }   // a guest: the new name stays in this browser
-    await openAccount(`You're ${r.name} now.`);
-  },
-  async esc() { mode = "game"; draw(); },
-};
-
 // ---------- input: taps and keys do the same things ----------
 
 // You can act once your turn is on and every move before it has been shown: the table may still be holding its last pause (a card
@@ -610,9 +563,7 @@ const ACCOUNT_KEYS = {
 const canAct = () => !rp || (rp.k >= rp.evs.length && T.view.turn === HUMAN && !pending());
 
 function press(k) {
-  if (mode === "account") { const f = ACCOUNT_KEYS[k]; if (f) f(); return; }
   if (mode !== "game" || !T) return;
-  if (k === "a") return openAccount();
   if (!canAct()) return;   // moves are playing out
   const v = T.view;
   if (k === "go") { if (pending()) { seen = v.history.length; msg = ""; playFromStart(); } return; }
@@ -655,14 +606,8 @@ $app.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
   const key = e.key.toLowerCase();
-  if (mode === "account") {
-    const map = { n: "new", c: "copy", d: "dl", u: "use", k: "pk", g: "pkin", o: "out", escape: "esc" };
-    if (map[key]) { e.preventDefault(); press(map[key]); }
-    return;
-  }
   if (mode !== "game" || !T) return;
   const v = T.view;
-  if (key === "a") return press("a");
   if (rp) return;
   if (pending()) { if (key === "enter" || key === " ") { e.preventDefault(); press("go"); } return; }
   if (v.over) { if (key === "p") press("play"); return; }
@@ -677,4 +622,4 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-load().then(() => { if (location.hash === "#account") { history.replaceState(null, "", location.pathname); openAccount(); } });   // the ledger page's Account link
+load();

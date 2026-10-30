@@ -150,11 +150,8 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .up { color: #7dffb0; } .down { color: #ff9db8; }
 
 /* account */
-.avatar { flex: none; width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel2); font-size: 30px; line-height: 1; }
-.avatar:hover { border-color: var(--b); box-shadow: 0 0 12px rgba(255,111,207,.5); }
 .codein { width: 100%; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); font: inherit; padding: 0 12px; text-transform: uppercase; }
 .code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; word-break: break-all; color: var(--ink); text-shadow: 0 0 8px var(--a); }
-.ver { text-align: center; font-size: 11px; color: var(--dim); }
 
 /* the ledger page (ledger.html) */
 .entries { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -189,4 +186,3 @@ header { display: flex; justify-content: space-between; align-items: flex-start;
 .rleft .tot { font-family: var(--meme); font-size: 20px; padding-right: 8px; }   /* the totals sit a few pixels further left */
 .rleft .tot.win { text-shadow: 0 0 10px var(--b); }
 .rleft .you { color: var(--ink); }
-.carry { width: 100%; height: 600px; border: 0; background: transparent; overflow: hidden; }   /* the registry's carry window in the account screen (v0.14) */
