@@ -4,6 +4,11 @@ Newest first. Times are Hawaii time (HST).
 
 ---
 
+## v0.15.2
+**Thu Oct 29, 2026 · 3:00 PM HST**
+
+- The footer sits right under the game panel. Removed: the 40px of empty space under the panel.
+
 ## v0.15.1
 **Thu Oct 29, 2026 · 2:50 PM HST**
 
