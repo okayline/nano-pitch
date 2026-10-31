@@ -622,4 +622,4 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-load();
+load().finally(() => { document.getElementById("ddfoot").hidden = false; });   // (v0.15.5) the footer shows only once the game has drawn, so it is never alone mid-screen
